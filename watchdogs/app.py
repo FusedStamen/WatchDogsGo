@@ -440,19 +440,29 @@ class WatchDogsGame:
         # __file__ = .../esp32-watch-dogs/watchdogs/app.py → go up two levels.
         _project_root = Path(__file__).resolve().parent.parent
         _app_dir = loot_path or str(_project_root)
-        # Load bigger font for messenger (8x8 BDF)
+        # Load bigger font for messenger (8x8 BDF) — kept for chat overlay
         _font_path = _project_root / "assets" / "font_8x8.bdf"
         try:
             self._big_font = pyxel.Font(str(_font_path))
         except Exception:
             self._big_font = None
-        # Terminal font — Spleen 6x12 is sharper and taller than pyxel's
-        # default 4x6. Fewer lines visible, but actually readable.
-        _term_font_path = _project_root / "assets" / "spleen-6x12.bdf"
+        # Primary UI font — Spleen 5x8 BSD-2-Clause. Crisper than pyxel's
+        # built-in 4x6 and applied globally via a pyxel.text monkey-patch
+        # a few lines below.
+        _ui_font_path = _project_root / "assets" / "spleen-5x8.bdf"
         try:
-            self._term_font = pyxel.Font(str(_term_font_path))
+            self._font = pyxel.Font(str(_ui_font_path))
         except Exception:
-            self._term_font = None
+            self._font = None
+        self._term_font = self._font
+        # Global default: every pyxel.text() call without an explicit font
+        # now renders with Spleen 5x8.
+        if self._font is not None:
+            _orig_text = pyxel.text
+            _ui_font = self._font
+            def _patched_text(x, y, s, col, font=None, _o=_orig_text, _f=_ui_font):
+                _o(x, y, s, col, font if font is not None else _f)
+            pyxel.text = _patched_text
         try:
             self.loot = LootManager(_app_dir, gps_manager=self.gps)
         except Exception:
@@ -4532,14 +4542,13 @@ class WatchDogsGame:
             pyxel.text(W - 60, TERM_Y + 1, f"SCROLL +{self.term_scroll}", C_DIM)
         pyxel.text(W - 30, TERM_Y + 1, f"L:{total}", C_DIM)
 
-        # Use Spleen 6x12 when available — much more readable than the
-        # pyxel default 4x6. Falls back to built-in if load failed.
-        tf = self._term_font
-        if tf is not None:
-            line_h = 11       # 12px glyphs with tiny gap
-            char_w = 6
+        # Spleen 5x8 — set as global default via monkey-patch, so pyxel.text
+        # calls below render with it even without an explicit font arg.
+        if self._font is not None:
+            line_h = 9        # 8px glyphs + 1px gap
+            char_w = 5
             content_y = TERM_Y + 10
-            max_chars = (W - 8) // char_w  # ~105 chars fit at 640px
+            max_chars = (W - 8) // char_w  # ~126 chars fit at 640px
         else:
             line_h = 5
             char_w = 4
@@ -4560,17 +4569,17 @@ class WatchDogsGame:
         for i in range(start, end):
             line = lines_snap[i]
             c = colors_snap[i] if have_colors else C_TEXT
-            pyxel.text(4, y, line[:max_chars], c, tf)
+            pyxel.text(4, y, line[:max_chars], c)
             y += line_h
             if y >= TERM_Y + TERM_H - line_h:
                 break
 
         if self.term_scroll == 0 and pyxel.frame_count % 30 < 20:
             pyxel.text(4, min(y, TERM_Y + TERM_H - line_h - 1), "_",
-                       C_HACK_CYAN, tf)
+                       C_HACK_CYAN)
         if total > max_visible and self.term_scroll == 0:
             pyxel.text(W - 120, TERM_Y + TERM_H - line_h - 1,
-                       "Fn+U/Fn+K scroll", C_DIM, tf)
+                       "Fn+U/Fn+K scroll", C_DIM)
 
     def _draw_mc_toast(self):
         """Draw MeshCore message toast on top of any screen."""
