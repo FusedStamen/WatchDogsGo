@@ -4282,8 +4282,9 @@ class WatchDogsGame:
             else:
                 n_sec += 1
 
-        # Popup dimensions
-        pw, ph = 300, min(180, 40 + min(n, 8) * 12 + 12)
+        # Popup dimensions — 14px rows for 5x8 font
+        ROW_H = 14
+        pw, ph = 340, min(200, 50 + min(n, 8) * ROW_H + 16)
         px = max(4, min(W - pw - 4, self._cluster_popup["x"] - pw // 2))
         py = max(HUD_TOP + 4, min(TERM_Y - ph - 4,
                                    self._cluster_popup["y"] - ph // 2))
@@ -4292,24 +4293,24 @@ class WatchDogsGame:
         pyxel.rectb(px, py, pw, ph, C_HACK_CYAN)
 
         # Header
-        pyxel.text(px + 4, py + 3, f"Point networks: {n}", C_TEXT)
+        pyxel.text(px + 4, py + 4, f"Point networks: {n}", C_TEXT)
         summary = f"Open:{n_open} | Secured:{n_sec} | Cracked:{n_crk}"
-        pyxel.text(px + 4, py + 12, summary, C_DIM)
+        pyxel.text(px + 4, py + 16, summary, C_DIM)
 
         # Close hint (ESC)
-        pyxel.text(px + pw - 22, py + 3, "ESC", C_DIM)
+        pyxel.text(px + pw - 24, py + 4, "ESC", C_DIM)
 
         # Column headers
-        hdr_y = py + 24
-        pyxel.text(px + 6, hdr_y, "SSID", C_DIM)
-        pyxel.text(px + 165, hdr_y, "RSSI", C_DIM)
-        pyxel.text(px + 200, hdr_y, "Type", C_DIM)
-        pyxel.text(px + 260, hdr_y, "Ch", C_DIM)
+        hdr_y = py + 30
+        pyxel.text(px + 14,  hdr_y, "SSID", C_DIM)
+        pyxel.text(px + 190, hdr_y, "RSSI", C_DIM)
+        pyxel.text(px + 230, hdr_y, "Type", C_DIM)
+        pyxel.text(px + 295, hdr_y, "Ch",   C_DIM)
 
         # Rows
         visible = pts[self._popup_scroll:self._popup_scroll + 8]
         for i, p in enumerate(visible):
-            ry = hdr_y + 12 + i * 12
+            ry = hdr_y + 14 + i * ROW_H
             ssid = p.get("label", "?")
             auth = p.get("auth", "")
             rssi = p.get("rssi", "")
@@ -4322,15 +4323,15 @@ class WatchDogsGame:
             else:
                 pyxel.text(px + 4, ry, "\x07", C_WARNING)  # dot for open
 
-            pyxel.text(px + 12, ry, ssid[:24], C_TEXT)
-            pyxel.text(px + 165, ry, str(rssi)[:5], C_DIM)
-            pyxel.text(px + 200, ry, type_lbl, type_c)
-            pyxel.text(px + 260, ry, str(ch)[:3], C_DIM)
+            pyxel.text(px + 14,  ry, ssid[:28], C_TEXT)
+            pyxel.text(px + 190, ry, str(rssi)[:5], C_DIM)
+            pyxel.text(px + 230, ry, type_lbl, type_c)
+            pyxel.text(px + 295, ry, str(ch)[:3], C_DIM)
 
         # Scroll indicator
         if n > 8:
             bar_h = max(4, ph * 8 // n)
-            bar_y = py + 24 + (ph - 36) * self._popup_scroll // max(1, n - 8)
+            bar_y = py + 30 + (ph - 46) * self._popup_scroll // max(1, n - 8)
             pyxel.rect(px + pw - 3, bar_y, 2, bar_h, C_DIM)
 
     def _draw_markers(self):
@@ -4589,13 +4590,13 @@ class WatchDogsGame:
         remaining = expire - pyxel.frame_count
         if remaining <= 0:
             return
-        # Large toast bar — centered, double height
-        tw = max(len(msg) * 6 + 60, 300)
+        # Large toast bar — centered, double height (5px per char)
+        tw = max(len(msg) * 5 + 60, 300)
         if tw > W - 20:
             tw = W - 20
         tx = (W - tw) // 2
         ty = 20
-        th = 28
+        th = 32
         # Background with thick border
         pyxel.rect(tx, ty, tw, th, 0)
         pyxel.rect(tx + 1, ty + 1, tw - 2, th - 2, 1)
@@ -4604,7 +4605,7 @@ class WatchDogsGame:
         # Icon + label
         pyxel.text(tx + 6, ty + 4, "MESHCORE", 2)
         # Message text — larger area
-        pyxel.text(tx + 6, ty + 14, msg[:70], C_SUCCESS)
+        pyxel.text(tx + 6, ty + 16, msg[:70], C_SUCCESS)
         # Blinking radio icon
         if pyxel.frame_count % 30 < 20:
             pyxel.circ(tx + tw - 10, ty + th // 2, 3, 2)
@@ -4649,36 +4650,43 @@ class WatchDogsGame:
         return "WHITE", 7
 
     def _draw_hud_top(self):
+        # Spleen 5x8: each char = 5px wide, 8px tall. HUD is 16px tall so
+        # text at y=4 sits with 4px margins. All horizontal jumps are
+        # computed from actual string widths so nothing overlaps.
+        CW, TY = 5, 4
         pyxel.rect(0, 0, W, HUD_TOP, C_HUD_BG)
         pyxel.line(0, HUD_TOP - 1, W - 1, HUD_TOP - 1, C_HUD_LINE)
         x = 4
         # Title
-        pyxel.text(x, 5, "WATCH DOGS", C_HACK_CYAN)
-        x += 46
+        title = "WATCH DOGS"
+        pyxel.text(x, TY, title, C_HACK_CYAN)
+        x += len(title) * CW + 6
         # Level
+        lv_txt = f"LV:{self.level}"
+        pyxel.text(x, TY, lv_txt, C_SUCCESS)
+        x += len(lv_txt) * CW + 4
         lvl = self.level_title
-        pyxel.text(x, 5, f"LV:{self.level}", C_SUCCESS)
-        x += 24
-        pyxel.text(x, 5, lvl, C_SUCCESS)
-        x += len(lvl) * 4 + 4
+        pyxel.text(x, TY, lvl, C_SUCCESS)
+        x += len(lvl) * CW + 4
         # XP bar
         xw = 40
         nxt = self.xp_for_next_level
         cur = self.xp_in_current_level
         xf = int(xw * cur / nxt) if nxt > 0 else xw
-        pyxel.rect(x, 5, xw, 6, C_GRID)
-        pyxel.rect(x, 5, xf, 6, C_HACK_CYAN)
-        pyxel.rectb(x, 5, xw, 6, C_COAST)
-        x += xw + 2
-        pyxel.text(x, 5, f"{self.xp}", C_DIM)
-        x += len(str(self.xp)) * 4 + 6
+        pyxel.rect(x, TY + 1, xw, 7, C_GRID)
+        pyxel.rect(x, TY + 1, xf, 7, C_HACK_CYAN)
+        pyxel.rectb(x, TY + 1, xw, 7, C_COAST)
+        x += xw + 3
+        xp_txt = f"{self.xp}"
+        pyxel.text(x, TY, xp_txt, C_DIM)
+        x += len(xp_txt) * CW + 6
         # Hat badge
         hat_name, hat_color = self._get_hat_profile()
-        pyxel.circ(x + 3, 7, 3, 7)
-        pyxel.circ(x + 3, 7, 2, hat_color)
-        x += 8
-        pyxel.text(x, 5, hat_name, C_DIM)
-        x += len(hat_name) * 4 + 4
+        pyxel.circ(x + 3, HUD_TOP // 2, 3, 7)
+        pyxel.circ(x + 3, HUD_TOP // 2, 2, hat_color)
+        x += 9
+        pyxel.text(x, TY, hat_name, C_DIM)
+        x += len(hat_name) * CW + 4
         # Achievement badges
         _BADGE_HUD = [
             ("flipper",          "FLP", C_WARNING),
@@ -4692,24 +4700,24 @@ class WatchDogsGame:
         ]
         for badge_id, label, color in _BADGE_HUD:
             if badge_id in self._badges:
-                lw = len(label) * 4 + 3
-                if x + lw + 2 > W - 40:
-                    break  # don't overflow past zoom
-                pyxel.rectb(x, 3, lw, 9, color)
-                pyxel.text(x + 1, 5, label, color)
+                lw = len(label) * CW + 4
+                if x + lw + 2 > W - 70:
+                    break  # don't overflow past zoom / battery
+                pyxel.rectb(x, 2, lw, HUD_TOP - 4, color)
+                pyxel.text(x + 2, TY, label, color)
                 x += lw + 2
         # Battery + Zoom — far right
         bat = self._battery_pct
         if bat >= 0:
             bc = C_SUCCESS if bat > 25 else (C_WARNING if bat > 10 else C_ERROR)
             bat_txt = f"BAT:{bat}%"
-            bx = W - len(bat_txt) * 4 - 6
-            pyxel.text(bx, 5, bat_txt, bc)
+            bx = W - len(bat_txt) * CW - 4
+            pyxel.text(bx, TY, bat_txt, bc)
             zoom_txt = f"Z:{self.proj.label}"
-            pyxel.text(bx - len(zoom_txt) * 4 - 6, 5, zoom_txt, C_DIM)
+            pyxel.text(bx - len(zoom_txt) * CW - 6, TY, zoom_txt, C_DIM)
         else:
             zoom_txt = f"Z:{self.proj.label}"
-            pyxel.text(W - len(zoom_txt) * 4 - 6, 5, zoom_txt, C_DIM)
+            pyxel.text(W - len(zoom_txt) * CW - 4, TY, zoom_txt, C_DIM)
 
     def _draw_hud_bottom(self):
         pyxel.rect(0, H - HUD_BOT, W, HUD_BOT, C_HUD_BG)
@@ -4727,11 +4735,12 @@ class WatchDogsGame:
                   + self._loot_totals.get("et_captures", 0)
                   + self.state.submitted_forms
                   + len(self.state.evil_twin_captured_data))
+        # Columns sized for Spleen 5x8 + 4-digit counts (e.g. "BLE:9999"=40px).
         pyxel.text(4,   y, f"BLE:{t_bt}",    C_HACK_CYAN)
-        pyxel.text(52,  y, f"WiFi:{t_wifi}", C_WARNING)
-        pyxel.text(110, y, f"HS:{t_hs}",    C_ERROR)
-        pyxel.text(146, y, f"PWD:{t_pwd}",  12)  # blue
-        pyxel.text(190, y, f"PWN:{n_pwn}",  C_SUCCESS)
+        pyxel.text(60,  y, f"WiFi:{t_wifi}", C_WARNING)
+        pyxel.text(125, y, f"HS:{t_hs}",    C_ERROR)
+        pyxel.text(170, y, f"PWD:{t_pwd}",  12)  # blue
+        pyxel.text(220, y, f"PWN:{n_pwn}",  C_SUCCESS)
 
         tools = []
         if self.wifi_scanning: tools.append("WiFi")
@@ -4748,40 +4757,40 @@ class WatchDogsGame:
             tools.append(f"433:{self._sdr.total_sensors_seen}")
         if tools:
             dots = "." * ((pyxel.frame_count // 10) % 4)
-            pyxel.text(240, y, " ".join(tools) + dots, 12)
+            pyxel.text(270, y, " ".join(tools) + dots, 12)
         elif not self.menu_open:
-            pyxel.text(240, y, "[TAB]Menu [`]Loot [S]Stop", C_COAST)
+            pyxel.text(270, y, "[TAB]Menu [`]Loot [S]Stop", C_COAST)
 
-        # GPS status
+        # GPS status — "DD.DDDDDS DDD.DDDDDW" = 20 chars × 5 = 100px
         if self.gps_fix:
             lat_c = "N" if self.player_lat >= 0 else "S"
             lon_c = "E" if self.player_lon >= 0 else "W"
             gps_txt = (f"{abs(self.player_lat):.5f}{lat_c} "
                        f"{abs(self.player_lon):.5f}{lon_c}")
-            pyxel.text(W - 160, y, gps_txt, C_SUCCESS)
+            pyxel.text(W - 108, y, gps_txt, C_SUCCESS)
         elif self.gps.available:
             if self.gps_sats_vis > 0:
-                pyxel.text(W - 130, y,
+                pyxel.text(W - 120, y,
                            f"Waiting fix Vis:{self.gps_sats_vis}", C_WARNING)
             else:
-                pyxel.text(W - 110, y, "Waiting for GPS fix", C_ERROR)
+                pyxel.text(W - 100, y, "Waiting for GPS fix", C_ERROR)
         else:
-            pyxel.text(W - 65, y, "GPS offline", C_DIM)
+            pyxel.text(W - 60, y, "GPS offline", C_DIM)
 
-        # LoRa status (left of GPS, same line)
+        # LoRa status (left of GPS, same line). "LoRa:ON pkt:9999" = 16×5 = 80
         if self._lora.running:
             pkts = self._lora.packets_received
-            pyxel.text(W - 260, y, f"LoRa:ON pkt:{pkts}", C_SUCCESS)
+            pyxel.text(W - 200, y, f"LoRa:ON pkt:{pkts}", C_SUCCESS)
         elif self._lora_enabled:
-            pyxel.text(W - 260, y, "LoRa:IDLE", C_WARNING)
+            pyxel.text(W - 200, y, "LoRa:IDLE", C_WARNING)
 
 
     def _draw_messages(self):
-        y = TERM_Y - 10
+        y = TERM_Y - 12
         for text, timer, col in reversed(self.msgs):
             c = col if min(timer, 30) / 30 > 0.5 else C_COAST
             pyxel.text(4, y, text[:80], c)
-            y -= 8
+            y -= 10
             if y < HUD_TOP + 10: break
 
     def _draw_radar(self):
@@ -4853,16 +4862,16 @@ class WatchDogsGame:
                 if pyxel.frame_count % 30 < 12:
                     pyxel.circb(ix - 5, iy + rh // 2, 8, C_WARNING)
 
-            # Message bubbles (left of radio)
+            # Message bubbles (left of radio) — 5x8 font + 2px padding
             if self._mc_bubbles:
                 by = iy + 4
                 bx_right = ix - 4
                 for txt, _exp in self._mc_bubbles[-3:]:
                     disp = txt[:28]
-                    tw = len(disp) * 4 + 8
+                    tw = len(disp) * 5 + 8
                     bx = bx_right - tw
-                    pyxel.rect(bx, by, tw, 10, 1)
-                    pyxel.rectb(bx, by, tw, 10, C_WARNING)
+                    pyxel.rect(bx, by, tw, 12, 1)
+                    pyxel.rectb(bx, by, tw, 12, C_WARNING)
                     pyxel.text(bx + 3, by + 2, disp, C_SUCCESS)
                     by += 12
 
@@ -4904,23 +4913,24 @@ class WatchDogsGame:
         PW = 310     # left panel width
         TAB_Y = HUD_TOP + 3
 
-        # Category tabs
+        # Category tabs — 12px tall to fit 8px text + 2px padding each side
+        TAB_H = 12
         cat_w = PW // len(MENU_CATS)
         for i, (cat_name, _items) in enumerate(MENU_CATS):
             tx = PX + i * cat_w
             sel = (i == self.menu_cat)
             if sel:
-                pyxel.rect(tx, TAB_Y - 1, cat_w - 1, 9, C_HACK_CYAN)
-                pyxel.text(tx + 2, TAB_Y, cat_name[:6], 0)
+                pyxel.rect(tx, TAB_Y - 1, cat_w - 1, TAB_H, C_HACK_CYAN)
+                pyxel.text(tx + 3, TAB_Y + 2, cat_name[:6], 0)
             else:
-                pyxel.rectb(tx, TAB_Y - 1, cat_w - 1, 9, C_COAST)
-                pyxel.text(tx + 2, TAB_Y, cat_name[:6], C_DIM)
+                pyxel.rectb(tx, TAB_Y - 1, cat_w - 1, TAB_H, C_COAST)
+                pyxel.text(tx + 3, TAB_Y + 2, cat_name[:6], C_DIM)
 
-        # Item list
+        # Item list — 13px tall rows
         _, items = MENU_CATS[self.menu_cat]
-        IY = TAB_Y + 12
-        IH = 10
-        max_vis = (TERM_Y - IY - 6) // IH
+        IY = TAB_Y + TAB_H + 3
+        IH = 13
+        max_vis = (TERM_Y - IY - 24) // IH
         for i, (hotkey, label, cmd, state_key, input_type) in enumerate(items):
             if i >= max_vis:
                 break
@@ -4943,37 +4953,39 @@ class WatchDogsGame:
                 bc = C_ERROR if is_stop else (C_COAST if is_na else C_MENU_BORDER)
                 pyxel.rectb(PX, ty - 1, PW, IH, bc)
                 tc = C_ERROR if is_stop else (C_DIM if is_na else C_TEXT)
-            pyxel.text(PX + 3, ty + 1, f"[{hotkey}] {label}", tc)
+            pyxel.text(PX + 4, ty + 2, f"[{hotkey}] {label}", tc)
             needs_wifi = state_key in _NEEDS_EXT_WIFI
             if needs_wifi:
                 # Red warning triangle with black "!"
-                wx = PX + PW - 28
-                wy = ty
-                pyxel.tri(wx, wy + 6, wx + 3, wy, wx + 6, wy + 6, C_ERROR)
-                pyxel.text(wx + 2, wy + 1, "!", 0)
+                wx = PX + PW - 32
+                wy = ty + 1
+                pyxel.tri(wx, wy + 8, wx + 4, wy, wx + 8, wy + 8, C_ERROR)
+                pyxel.text(wx + 3, wy + 2, "!", 0)
             if running:
-                pyxel.text(PX + PW - 14, ty + 1, "ON", C_SUCCESS if not sel else 0)
+                pyxel.text(PX + PW - 18, ty + 2, "ON",
+                           C_SUCCESS if not sel else 0)
             if input_type:
-                pyxel.text(PX + PW - 8, ty + 1, ">", C_DIM if not sel else 0)
+                pyxel.text(PX + PW - 8, ty + 2, ">", C_DIM if not sel else 0)
 
         # Show ext WiFi warning if selected item needs it
         _, sel_items = MENU_CATS[self.menu_cat]
         if self.menu_sel < len(sel_items):
             _sk = sel_items[self.menu_sel][3]
             if _sk in _NEEDS_EXT_WIFI:
-                pyxel.text(PX + 3, TERM_Y - 18,
+                pyxel.text(PX + 3, TERM_Y - 22,
                            "\x17 Requires external WiFi adapter", C_WARNING)
 
         # Navigation hint
-        pyxel.text(PX + 1, TERM_Y - 8, "\x1c/\x1d cat  \x1e/\x1f sel  ENTER  TAB", C_DIM)
+        pyxel.text(PX + 1, TERM_Y - 10,
+                   "\x1c/\x1d cat  \x1e/\x1f sel  ENTER  TAB", C_DIM)
 
         # ─ ESP32 status + category (top-left of right panel) ─
         sx2 = PX + 310 + 8
         esp_c = C_SUCCESS if self._esp32 else C_ERROR
         pyxel.text(sx2, HUD_TOP + 4,  "ESP32:", C_DIM)
-        pyxel.text(sx2, HUD_TOP + 12, "OK" if self._esp32 else "OFFLINE", esp_c)
+        pyxel.text(sx2, HUD_TOP + 16, "OK" if self._esp32 else "OFFLINE", esp_c)
         cat_name = MENU_CATS[self.menu_cat][0]
-        pyxel.text(sx2, HUD_TOP + 22, f"// {cat_name}", C_HACK_CYAN)
+        pyxel.text(sx2, HUD_TOP + 30, f"// {cat_name}", C_HACK_CYAN)
 
     def _draw_menu_hacker(self):
         """Draw hacker sprite + speech bubble ON TOP of menu dim overlay.
@@ -5025,8 +5037,8 @@ class WatchDogsGame:
         quip_list = HACKER_QUIPS[self.menu_cat % len(HACKER_QUIPS)]
         quip = quip_list[(pyxel.frame_count // 90) % len(quip_list)]
         quip_upper = quip.upper()
-        qw = len(quip_upper) * 4 + 16
-        qh = 18
+        qw = len(quip_upper) * 5 + 16
+        qh = 20
         qx = bubble_cx - (self._hacker_w if self._hacker_w else 60) - qw // 2
         qy = bubble_y
         if qx < 2:
@@ -5055,9 +5067,9 @@ class WatchDogsGame:
         tail_y = qy + qh // 2
         pyxel.line(tail_x, tail_y - 2, tail_x + 6, tail_y, C_HACK_CYAN)
         pyxel.line(tail_x, tail_y + 2, tail_x + 6, tail_y, C_HACK_CYAN)
-        # Text
-        text_x = qx + (qw - len(quip_upper) * 4) // 2
-        text_y = qy + (qh - 6) // 2
+        # Text — Spleen 5x8 centered in bubble
+        text_x = qx + (qw - len(quip_upper) * 5) // 2
+        text_y = qy + (qh - 8) // 2
         pyxel.text(text_x, text_y, quip_upper, C_HACK_CYAN)
 
     # ------------------------------------------------------------------
@@ -5074,39 +5086,41 @@ class WatchDogsGame:
                 cli_map[sap.ssid] = sap.client_count
         # Solid dim background
         pyxel.rect(0, HUD_TOP, W, TERM_Y - HUD_TOP, 0)
-        # Dialog box
-        dw, dh = 480, min(220, 50 + len(nets) * 12)
+        # Dialog box — 14px rows for 5x8 font
+        ROW_H = 14
+        dw, dh = 540, min(260, 60 + len(nets) * ROW_H)
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
         pyxel.rectb(dx, dy, dw, dh, C_HACK_CYAN)
         pyxel.rectb(dx + 1, dy + 1, dw - 2, dh - 2, C_COAST)
         # Title
-        pyxel.text(dx + 4, dy + 3, "EVIL TWIN — Select Target Network", C_HACK_CYAN)
-        pyxel.line(dx + 2, dy + 11, dx + dw - 3, dy + 11, C_COAST)
-        # Column headers
-        hy = dy + 15
-        pyxel.text(dx + 22, hy, "SSID", C_DIM)
-        pyxel.text(dx + 190, hy, "BSSID", C_DIM)
-        pyxel.text(dx + 310, hy, "CH", C_DIM)
-        pyxel.text(dx + 340, hy, "RSSI", C_DIM)
-        pyxel.text(dx + 380, hy, "Auth", C_DIM)
-        pyxel.text(dx + 430, hy, "Cli", C_DIM)
-        pyxel.line(dx + 2, hy + 8, dx + dw - 3, hy + 8, 1)
+        pyxel.text(dx + 4, dy + 4, "EVIL TWIN — Select Target Network", C_HACK_CYAN)
+        pyxel.line(dx + 2, dy + 14, dx + dw - 3, dy + 14, C_COAST)
+        # Column headers — spaced for 5x8 font (widened from 4x6)
+        hy = dy + 18
+        pyxel.text(dx + 26,  hy, "SSID",  C_DIM)
+        pyxel.text(dx + 220, hy, "BSSID", C_DIM)
+        pyxel.text(dx + 360, hy, "CH",    C_DIM)
+        pyxel.text(dx + 390, hy, "RSSI",  C_DIM)
+        pyxel.text(dx + 430, hy, "Auth",  C_DIM)
+        pyxel.text(dx + 495, hy, "Cli",   C_DIM)
+        pyxel.line(dx + 2, hy + 10, dx + dw - 3, hy + 10, 1)
         # Network list with scroll
-        max_vis = (dh - 60) // 12
+        max_vis = (dh - 70) // ROW_H
         start = max(0, self._et_net_sel - max_vis + 1)
-        y = hy + 12
+        y = hy + 14
         picked = self._et_net_selected
         for i in range(start, min(len(nets), start + max_vis)):
             net = nets[i]
             cursor = (i == self._et_net_sel)
             checked = (i in picked)
             if cursor:
-                pyxel.rect(dx + 2, y - 1, dw - 4, 11, C_HACK_CYAN)
+                pyxel.rect(dx + 2, y - 1, dw - 4, ROW_H - 1, C_HACK_CYAN)
             # Checkbox: [X] or [ ]
             mark = "X" if checked else " "
-            pyxel.text(dx + 4, y + 1, f"[{mark}]", 0 if cursor else (C_WARNING if checked else C_DIM))
+            pyxel.text(dx + 4, y + 2, f"[{mark}]",
+                       0 if cursor else (C_WARNING if checked else C_DIM))
             ssid = (net.ssid or "<hidden>")[:24]
             bssid = net.bssid if hasattr(net, 'bssid') else "?"
             ch = str(net.channel) if hasattr(net, 'channel') else "?"
@@ -5115,24 +5129,26 @@ class WatchDogsGame:
             n_cli = cli_map.get(net.ssid, -1)
             cli_str = str(n_cli) if n_cli >= 0 else "-"
             c = 0 if cursor else C_SUCCESS
-            pyxel.text(dx + 22, y + 1, ssid, c)
-            pyxel.text(dx + 190, y + 1, bssid, 0 if cursor else C_TEXT)
-            pyxel.text(dx + 310, y + 1, ch, 0 if cursor else C_DIM)
-            pyxel.text(dx + 340, y + 1, rssi, 0 if cursor else C_DIM)
-            pyxel.text(dx + 380, y + 1, auth, 0 if cursor else C_DIM)
-            cli_c = (0 if cursor else C_WARNING) if n_cli > 0 else (0 if cursor else C_DIM)
-            pyxel.text(dx + 430, y + 1, cli_str, cli_c)
-            y += 12
+            pyxel.text(dx + 26,  y + 2, ssid,  c)
+            pyxel.text(dx + 220, y + 2, bssid, 0 if cursor else C_TEXT)
+            pyxel.text(dx + 360, y + 2, ch,    0 if cursor else C_DIM)
+            pyxel.text(dx + 390, y + 2, rssi,  0 if cursor else C_DIM)
+            pyxel.text(dx + 430, y + 2, auth,  0 if cursor else C_DIM)
+            cli_c = (0 if cursor else C_WARNING) if n_cli > 0 else (
+                    0 if cursor else C_DIM)
+            pyxel.text(dx + 495, y + 2, cli_str, cli_c)
+            y += ROW_H
         # Scroll indicator
         if len(nets) > max_vis:
-            bar_total = dh - 60
+            bar_total = dh - 70
             bar_h = max(4, bar_total * max_vis // len(nets))
-            bar_y = dy + 24 + (bar_total - bar_h) * start // max(1, len(nets) - max_vis)
+            bar_y = dy + 30 + (bar_total - bar_h) * start // max(
+                1, len(nets) - max_vis)
             pyxel.rect(dx + dw - 4, bar_y, 2, bar_h, C_HACK_CYAN)
         # Selection info
         n_sel = len(picked)
         if n_sel > 0:
-            pyxel.text(dx + dw - 110, dy + 3,
+            pyxel.text(dx + dw - 130, dy + 4,
                        f"1st=clone {n_sel-1}=deauth" if n_sel > 1 else "1 target",
                        C_WARNING)
         # Hints
@@ -5140,9 +5156,9 @@ class WatchDogsGame:
         hint = "SPACE mark  ENTER confirm  ESC cancel"
         if not has_cli:
             hint += "  (run Sniffer first for client counts)"
-        pyxel.text(dx + 4, dy + dh - 9, hint, C_DIM)
+        pyxel.text(dx + 4, dy + dh - 11, hint, C_DIM)
         # Count
-        pyxel.text(dx + dw - 80, dy + 3, f"{len(nets)} networks", C_DIM)
+        pyxel.text(dx + dw - 90, dy + 4, f"{len(nets)} networks", C_DIM)
 
     def _draw_portal_picker(self):
         """Draw portal selection overlay."""
@@ -5150,28 +5166,29 @@ class WatchDogsGame:
         tag = "EVIL PORTAL" if self._attack_mode == "evil_portal" else "EVIL TWIN"
         # Solid dim background
         pyxel.rect(0, HUD_TOP, W, TERM_Y - HUD_TOP, 0)
-        # Dialog box
-        dw, dh = 360, min(180, 50 + len(portals) * 14)
+        # Dialog box — 14px rows for 5x8 font
+        ROW_H = 14
+        dw, dh = 420, min(220, 60 + len(portals) * ROW_H)
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
         pyxel.rectb(dx, dy, dw, dh, C_WARNING)
         pyxel.rectb(dx + 1, dy + 1, dw - 2, dh - 2, C_COAST)
         # Title
-        pyxel.text(dx + 4, dy + 3, f"{tag} — Select Portal", C_WARNING)
-        pyxel.line(dx + 2, dy + 11, dx + dw - 3, dy + 11, C_COAST)
+        pyxel.text(dx + 4, dy + 4, f"{tag} — Select Portal", C_WARNING)
+        pyxel.line(dx + 2, dy + 14, dx + dw - 3, dy + 14, C_COAST)
         # SSID info
-        pyxel.text(dx + 4, dy + 15, f"SSID: {self._portal_ssid}", C_HACK_CYAN)
-        pyxel.line(dx + 2, dy + 23, dx + dw - 3, dy + 23, 1)
+        pyxel.text(dx + 4, dy + 18, f"SSID: {self._portal_ssid}", C_HACK_CYAN)
+        pyxel.line(dx + 2, dy + 28, dx + dw - 3, dy + 28, 1)
         # Portal list
-        max_vis = (dh - 55) // 14
+        max_vis = (dh - 60) // ROW_H
         start = max(0, self._portal_sel - max_vis + 1)
-        y = dy + 27
+        y = dy + 32
         for i in range(start, min(len(portals), start + max_vis)):
             name, html = portals[i]
             sel = (i == self._portal_sel)
             if sel:
-                pyxel.rect(dx + 2, y - 1, dw - 4, 13, C_WARNING)
+                pyxel.rect(dx + 2, y - 1, dw - 4, ROW_H - 1, C_WARNING)
             # Type indicator
             if html is None:
                 src = "[FW]"
@@ -5183,8 +5200,8 @@ class WatchDogsGame:
                 src = "[B-IN]"
                 sc = C_SUCCESS
             c = 0 if sel else C_TEXT
-            pyxel.text(dx + 6, y + 2, src, 0 if sel else sc)
-            pyxel.text(dx + 36, y + 2, name[:28], c)
+            pyxel.text(dx + 6, y + 3, src, 0 if sel else sc)
+            pyxel.text(dx + 44, y + 3, name[:28], c)
             # Upload time estimate
             if html is None:
                 t_str = "instant"
@@ -5193,12 +5210,12 @@ class WatchDogsGame:
                 b64_len = math.ceil(len(html.encode("utf-8")) * 4 / 3)
                 secs = b64_len / 128 * 0.2
                 t_str = f"~{int(secs)}s" if secs >= 1 else "<1s"
-            pyxel.text(dx + dw - 36, y + 2, t_str, 0 if sel else C_DIM)
-            y += 14
+            pyxel.text(dx + dw - 46, y + 3, t_str, 0 if sel else C_DIM)
+            y += ROW_H
         # Hints
         hint = "UP/DOWN select  ENTER confirm  ESC "
         hint += "back" if self._attack_mode == "evil_twin" else "cancel"
-        pyxel.text(dx + 4, dy + dh - 9, hint, C_DIM)
+        pyxel.text(dx + 4, dy + dh - 11, hint, C_DIM)
 
     # ------------------------------------------------------------------
     # Flipper Zero screen
@@ -5678,49 +5695,51 @@ class WatchDogsGame:
                    + len(self.state.evil_twin_captured_data))
         # Solid background
         pyxel.rect(0, HUD_TOP, W, TERM_Y - HUD_TOP, 0)
-        # Dialog box
-        dw, dh = 500, 200
+        # Dialog box — 12px rows for 5x8 font
+        ROW_H = 12
+        dw, dh = 560, 240
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
         pyxel.rectb(dx, dy, dw, dh, 12)  # blue border
         pyxel.rectb(dx + 1, dy + 1, dw - 2, dh - 2, C_COAST)
         # Title
-        pyxel.text(dx + 4, dy + 3,
+        pyxel.text(dx + 4, dy + 4,
                    f"{tag} — Captured Data", 12)
-        pyxel.text(dx + dw - 120, dy + 3,
+        pyxel.text(dx + dw - 150, dy + 4,
                    f"Clients:{n_clients} Forms:{n_forms}", C_DIM)
-        pyxel.line(dx + 2, dy + 11, dx + dw - 3, dy + 11, C_COAST)
+        pyxel.line(dx + 2, dy + 14, dx + dw - 3, dy + 14, C_COAST)
         # SSID info
-        pyxel.text(dx + 4, dy + 15,
+        pyxel.text(dx + 4, dy + 18,
                    f"SSID: {self._portal_ssid}", C_HACK_CYAN)
-        pyxel.line(dx + 2, dy + 23, dx + dw - 3, dy + 23, 1)
+        pyxel.line(dx + 2, dy + 28, dx + dw - 3, dy + 28, 1)
         # Captured data list
         if not captures:
-            pyxel.text(dx + (dw - 120) // 2, dy + dh // 2,
+            pyxel.text(dx + (dw - 27 * 5) // 2, dy + dh // 2,
                        "No credentials captured yet", C_DIM)
         else:
-            max_vis = (dh - 55) // 10
+            max_vis = (dh - 60) // ROW_H
             scroll = getattr(self, '_portal_data_scroll', 0)
             scroll = min(scroll, max(0, len(captures) - max_vis))
             self._portal_data_scroll = scroll
-            y = dy + 27
+            y = dy + 32
             for i in range(scroll, min(len(captures), scroll + max_vis)):
                 line = captures[i]
                 # Strip the [EP:PWD] or [ET:PWD] prefix for cleaner display
                 display = line
                 if ":PWD] " in line:
                     display = line.split(":PWD] ", 1)[1]
-                pyxel.text(dx + 6, y, display[:60], 12)  # blue text
-                y += 10
+                pyxel.text(dx + 6, y, display[:90], 12)  # blue text
+                y += ROW_H
             # Scroll indicator
             if len(captures) > max_vis:
-                bar_total = dh - 55
+                bar_total = dh - 60
                 bar_h = max(4, bar_total * max_vis // len(captures))
-                bar_y = dy + 27 + (bar_total - bar_h) * scroll // max(1, len(captures) - max_vis)
+                bar_y = dy + 32 + (bar_total - bar_h) * scroll // max(
+                    1, len(captures) - max_vis)
                 pyxel.rect(dx + dw - 4, bar_y, 2, bar_h, 12)
         # Hints
-        pyxel.text(dx + 4, dy + dh - 9,
+        pyxel.text(dx + 4, dy + dh - 11,
                    "[D] close  [UP/DOWN] scroll  [X] stop attack", C_DIM)
 
     def _draw_input_dialog(self):
@@ -5728,9 +5747,10 @@ class WatchDogsGame:
         for y in range(HUD_TOP, TERM_Y):
             if y % 2 == 0:
                 pyxel.line(0, y, W - 1, y, 0)
-        # Dialog box
-        dh = 28 + len(self.input_fields) * 16
-        dw = 280
+        # Dialog box — 20px per field (was 16 for 4x6 font; now 8px text + 12 gap)
+        FIELD_H = 20
+        dh = 40 + len(self.input_fields) * FIELD_H
+        dw = 320
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
@@ -5750,31 +5770,32 @@ class WatchDogsGame:
         else:
             _, items = MENU_CATS[self._input_pending_cat]
             _hk, name, _cmd, _sk, _it = items[self._input_pending_item]
-        pyxel.text(dx + 4, dy + 3, f"INPUT: {name}", C_HACK_CYAN)
-        pyxel.line(dx, dy + 11, dx + dw - 1, dy + 11, C_COAST)
+        pyxel.text(dx + 4, dy + 4, f"INPUT: {name}", C_HACK_CYAN)
+        pyxel.line(dx, dy + 14, dx + dw - 1, dy + 14, C_COAST)
         # Fields
         for i, field in enumerate(self.input_fields):
-            fy = dy + 14 + i * 16
+            fy = dy + 20 + i * FIELD_H
             active = (i == self.input_field_idx)
-            pyxel.text(dx + 4, fy, f"{field['label']}:", C_HACK_CYAN if active else C_DIM)
-            bx = dx + 46
-            bw2 = dw - 52
-            pyxel.rect(bx, fy - 1, bw2, 9, 1)
-            pyxel.rectb(bx, fy - 1, bw2, 9, C_HACK_CYAN if active else C_COAST)
+            pyxel.text(dx + 6, fy, f"{field['label']}:",
+                       C_HACK_CYAN if active else C_DIM)
+            bx = dx + 56
+            bw2 = dw - 64
+            pyxel.rect(bx, fy - 2, bw2, 12, 1)
+            pyxel.rectb(bx, fy - 2, bw2, 12, C_HACK_CYAN if active else C_COAST)
             val = field["value"]
             if active and pyxel.frame_count % 30 < 20:
                 val += "_"
-            pyxel.text(bx + 2, fy, val[:24], C_SUCCESS if active else C_TEXT)
+            pyxel.text(bx + 3, fy, val[:36], C_SUCCESS if active else C_TEXT)
         # Hint
-        pyxel.text(dx + 4, dy + dh - 9, "ENTER confirm  ESC cancel", C_DIM)
+        pyxel.text(dx + 4, dy + dh - 11, "ENTER confirm  ESC cancel", C_DIM)
 
     def _draw_confirm_quit(self):
         # Dim overlay
         for y in range(HUD_TOP, TERM_Y):
             if y % 2 == 0:
                 pyxel.line(0, y, W - 1, y, 0)
-        # Dialog box — larger for readability
-        dw, dh = 220, 64
+        # Dialog box — larger for readability (5x8 font)
+        dw, dh = 260, 78
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
@@ -5782,22 +5803,22 @@ class WatchDogsGame:
         pyxel.rectb(dx + 1, dy + 1, dw - 2, dh - 2, C_ERROR)
         # Glitch accent line
         pyxel.line(dx + 3, dy + 2, dx + dw - 4, dy + 2, C_ERROR)
-        # Title
-        pyxel.text(dx + (dw - 15 * 4) // 2, dy + 8,
+        # Title (15 chars × 5 = 75px)
+        pyxel.text(dx + (dw - 15 * 5) // 2, dy + 8,
                    "QUIT WATCHDOGS?", C_ERROR)
-        pyxel.line(dx + 2, dy + 18, dx + dw - 3, dy + 18, C_COAST)
-        # Subtitle
-        pyxel.text(dx + (dw - 26 * 4) // 2, dy + 24,
+        pyxel.line(dx + 2, dy + 20, dx + dw - 3, dy + 20, C_COAST)
+        # Subtitle (25 chars × 5 = 125px)
+        pyxel.text(dx + (dw - 25 * 5) // 2, dy + 26,
                    "All operations will stop.", C_DIM)
         # Prompt — centered, larger spacing
-        bx = dx + dw // 2 - 50
-        pyxel.text(bx, dy + 38, "[Y]", C_SUCCESS)
-        pyxel.text(bx + 16, dy + 38, "Quit", C_TEXT)
-        pyxel.text(bx + 60, dy + 38, "[N]", C_ERROR)
-        pyxel.text(bx + 76, dy + 38, "Cancel", C_TEXT)
-        # Blink hint
+        bx = dx + dw // 2 - 60
+        pyxel.text(bx, dy + 46, "[Y]", C_SUCCESS)
+        pyxel.text(bx + 20, dy + 46, "Quit", C_TEXT)
+        pyxel.text(bx + 70, dy + 46, "[N]", C_ERROR)
+        pyxel.text(bx + 90, dy + 46, "Cancel", C_TEXT)
+        # Blink hint (12 chars × 5 = 60px)
         if pyxel.frame_count % 40 < 28:
-            pyxel.text(dx + (dw - 12 * 4) // 2, dy + 52,
+            pyxel.text(dx + (dw - 12 * 5) // 2, dy + 62,
                        "press Y or N", C_DIM)
 
     def _draw_gps_wait_dialog(self):
@@ -5806,7 +5827,7 @@ class WatchDogsGame:
             if y % 2 == 0:
                 pyxel.line(0, y, W - 1, y, 0)
         # Dialog box
-        dw, dh = 260, 58
+        dw, dh = 280, 70
         dx = (W - dw) // 2
         dy = (H - dh) // 2
         pyxel.rect(dx, dy, dw, dh, 0)
@@ -5822,13 +5843,13 @@ class WatchDogsGame:
             sat = f"Visible: {self.gps_sats_vis}"
         else:
             sat = "No satellites detected"
-        pyxel.text(dx + 4, dy + 17, sat, C_DIM)
-        pyxel.text(dx + 4, dy + 27, "Wait for GPS fix?", C_TEXT)
+        pyxel.text(dx + 4, dy + 18, sat, C_DIM)
+        pyxel.text(dx + 4, dy + 30, "Wait for GPS fix?", C_TEXT)
         # Buttons
-        pyxel.text(dx + 18, dy + 37, "[Y]", C_SUCCESS)
-        pyxel.text(dx + 30, dy + 37, "wait", C_TEXT)
-        pyxel.text(dx + 80, dy + 37, "[N]", C_ERROR)
-        pyxel.text(dx + 92, dy + 37, "cancel", C_TEXT)
+        pyxel.text(dx + 18, dy + 44, "[Y]", C_SUCCESS)
+        pyxel.text(dx + 38, dy + 44, "wait", C_TEXT)
+        pyxel.text(dx + 90, dy + 44, "[N]", C_ERROR)
+        pyxel.text(dx + 110, dy + 44, "cancel", C_TEXT)
 
     # ------------------------------------------------------------------
     # MITM dedicated screen (JanOS-style sub-screen)
