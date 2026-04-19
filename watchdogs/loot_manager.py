@@ -32,6 +32,50 @@ from .app_state import AppState, Network, SnifferAP, ProbeEntry
 log = logging.getLogger(__name__)
 
 
+def _fsync_file(fh) -> None:
+    """Flush Python buffer + OS page cache to physical disk.
+
+    Without this, `with open(...).write(...)` only pushes bytes down to the
+    OS cache. If the uConsole battery dies before Linux lazily writes that
+    cache back to the eMMC/SD, the data is gone. fsync makes the write
+    survive a hard power cut. Costs ~5–20 ms on SD — cheap per event,
+    expensive per frame, so call it only from discrete save-on-event paths.
+    """
+    try:
+        fh.flush()
+        os.fsync(fh.fileno())
+    except OSError:
+        pass
+
+
+def _sync_append(path: Path, text: str, encoding: str = "utf-8",
+                 newline: Optional[str] = None) -> None:
+    """Append text to path and fsync. Silently ignores I/O errors."""
+    try:
+        kwargs = {"encoding": encoding}
+        if newline is not None:
+            kwargs["newline"] = newline
+        with open(path, "a", **kwargs) as fh:
+            fh.write(text)
+            _fsync_file(fh)
+    except OSError:
+        pass
+
+
+def _sync_write(path: Path, text: str, encoding: str = "utf-8",
+                newline: Optional[str] = None) -> None:
+    """Write text to path and fsync. Silently ignores I/O errors."""
+    try:
+        kwargs = {"encoding": encoding}
+        if newline is not None:
+            kwargs["newline"] = newline
+        with open(path, "w", **kwargs) as fh:
+            fh.write(text)
+            _fsync_file(fh)
+    except OSError:
+        pass
+
+
 class LootManager:
     """Manages a per-session loot directory and auto-saves captured data."""
 
@@ -270,11 +314,14 @@ class LootManager:
         db["totals"] = totals
 
     def _save_db(self, db: dict) -> None:
-        """Write the DB to loot_db.json atomically."""
+        """Write the DB to loot_db.json atomically. fsync'd before rename so
+        a power cut between tmp write and rename can't leave a zero-byte
+        loot_db.json (the rename is atomic on the same filesystem)."""
         try:
             tmp = self._db_path.with_suffix(".tmp")
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(db, fh, indent=2)
+                _fsync_file(fh)
             tmp.replace(self._db_path)
         except OSError as exc:
             log.error("Cannot save loot DB: %s", exc)
@@ -546,6 +593,7 @@ class LootManager:
                 fh.write("\n")
                 for line in self._hs_buffer:
                     fh.write(line + "\n")
+                _fsync_file(fh)
             log.info("Handshake saved: %s", filepath)
             self._save_gps_sidecar(filepath)
             self.update_session_loot()
@@ -647,25 +695,28 @@ class LootManager:
         )
         base_name = f"{safe_ssid}_{self._pcap_meta_bssid}_{ts}"
 
-        # Save .pcap
+        # Save .pcap — fsync'd, this is unrecoverable capture data
         try:
             pcap_data = base64.b64decode("".join(self._pcap_b64_lines))
             pcap_path = self._handshake_dir / f"{base_name}.pcap"
             with open(pcap_path, "wb") as fh:
                 fh.write(pcap_data)
+                _fsync_file(fh)
             log.info("PCAP saved: %s (%d bytes)", pcap_path, len(pcap_data))
             self._save_gps_sidecar(pcap_path)
         except Exception as exc:
             log.error("Cannot save PCAP: %s", exc)
 
-        # Save .hccapx (if present)
+        # Save .hccapx (if present) — fsync'd
         if self._hccapx_b64_lines:
             try:
                 hccapx_data = base64.b64decode("".join(self._hccapx_b64_lines))
                 hccapx_path = self._handshake_dir / f"{base_name}.hccapx"
                 with open(hccapx_path, "wb") as fh:
                     fh.write(hccapx_data)
-                log.info("HCCAPX saved: %s (%d bytes)", hccapx_path, len(hccapx_data))
+                    _fsync_file(fh)
+                log.info("HCCAPX saved: %s (%d bytes)",
+                         hccapx_path, len(hccapx_data))
                 self._save_gps_sidecar(hccapx_path)
                 # Generate .22000 from complete handshakes
                 self._try_generate_22000(hccapx_path)
@@ -823,6 +874,7 @@ class LootManager:
             try:
                 with open(path, "w", newline="", encoding="utf-8") as fh:
                     fh.writelines(lines)
+                    _fsync_file(fh)
             except OSError as exc:
                 log.error("Cannot update wardriving CSV: %s", exc)
             return True
@@ -833,9 +885,11 @@ class LootManager:
                         fh.write(self._WIGLE_PRE_HEADER)
                         fh.write(self._WIGLE_HEADER)
                         fh.write(new_row)
+                        _fsync_file(fh)
                 else:
                     with open(path, "a", newline="", encoding="utf-8") as fh:
                         fh.write(new_row)
+                        _fsync_file(fh)
             except OSError as exc:
                 log.error("Cannot save wardriving network: %s", exc)
             return True
@@ -892,6 +946,7 @@ class LootManager:
             try:
                 with open(path, "w", newline="", encoding="utf-8") as fh:
                     fh.writelines(lines)
+                    _fsync_file(fh)
             except OSError as exc:
                 log.error("Cannot update wardriving BT CSV: %s", exc)
             return True
@@ -902,27 +957,31 @@ class LootManager:
                         fh.write(self._WIGLE_PRE_HEADER)
                         fh.write(self._WIGLE_HEADER)
                         fh.write(new_row)
+                        _fsync_file(fh)
                 else:
                     with open(path, "a", newline="", encoding="utf-8") as fh:
                         fh.write(new_row)
+                        _fsync_file(fh)
             except OSError as exc:
                 log.error("Cannot save wardriving BT device: %s", exc)
             return True
 
     def save_scan_results(self, networks: List[Network]) -> None:
-        """Save scan results as CSV."""
+        """Save scan results as CSV. fsync'd."""
         if not self._session_active or not networks:
             return
         filepath = self._session / "scan_results.csv"
         try:
             with open(filepath, "w", newline="", encoding="utf-8") as fh:
                 writer = csv.writer(fh)
-                writer.writerow(["#", "SSID", "BSSID", "Channel", "Auth", "RSSI", "Band", "Vendor"])
+                writer.writerow(["#", "SSID", "BSSID", "Channel", "Auth",
+                                 "RSSI", "Band", "Vendor"])
                 for n in networks:
                     writer.writerow([
                         n.index, n.ssid, n.bssid, n.channel,
                         n.auth, n.rssi, n.band, n.vendor,
                     ])
+                _fsync_file(fh)
             log.info("Scan results saved: %d networks", len(networks))
         except OSError as exc:
             log.error("Cannot save scan results: %s", exc)
@@ -932,7 +991,7 @@ class LootManager:
     # ------------------------------------------------------------------
 
     def save_sniffer_aps(self, aps: List[SnifferAP]) -> None:
-        """Save sniffer AP results as CSV."""
+        """Save sniffer AP results as CSV. fsync'd."""
         if not self._session_active or not aps:
             return
         filepath = self._session / "sniffer_aps.csv"
@@ -945,12 +1004,13 @@ class LootManager:
                         ap.ssid, ap.channel, ap.client_count,
                         ";".join(ap.clients),
                     ])
+                _fsync_file(fh)
             log.info("Sniffer APs saved: %d", len(aps))
         except OSError as exc:
             log.error("Cannot save sniffer APs: %s", exc)
 
     def save_sniffer_probes(self, probes: List[ProbeEntry]) -> None:
-        """Save probe requests as CSV."""
+        """Save probe requests as CSV. fsync'd."""
         if not self._session_active or not probes:
             return
         filepath = self._session / "sniffer_probes.csv"
@@ -960,6 +1020,7 @@ class LootManager:
                 writer.writerow(["SSID", "MAC"])
                 for p in probes:
                     writer.writerow([p.ssid, p.mac])
+                _fsync_file(fh)
             log.info("Sniffer probes saved: %d", len(probes))
         except OSError as exc:
             log.error("Cannot save sniffer probes: %s", exc)
@@ -969,50 +1030,39 @@ class LootManager:
     # ------------------------------------------------------------------
 
     def save_portal_event(self, line: str) -> None:
-        """Append a portal password/form submission line."""
+        """Append a portal password/form submission line. fsync'd — this is
+        captured-credential data we can't afford to lose on power failure."""
         if not self._session_active:
             return
         filepath = self._session / "portal_passwords.log"
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            with open(filepath, "a", encoding="utf-8") as fh:
-                fh.write(f"[{ts}] {line}\n")
-            self.update_session_loot()
-        except OSError:
-            pass
+        ts = datetime.now().strftime("%H:%M:%S")
+        _sync_append(filepath, f"[{ts}] {line}\n")
+        self.update_session_loot()
 
     # ------------------------------------------------------------------
     # Evil Twin
     # ------------------------------------------------------------------
 
     def save_evil_twin_event(self, line: str) -> None:
-        """Append an evil twin capture line."""
+        """Append an evil twin capture line. fsync'd — captured credentials."""
         if not self._session_active:
             return
         filepath = self._session / "evil_twin_capture.log"
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            with open(filepath, "a", encoding="utf-8") as fh:
-                fh.write(f"[{ts}] {line}\n")
-            self.update_session_loot()
-        except OSError:
-            pass
+        ts = datetime.now().strftime("%H:%M:%S")
+        _sync_append(filepath, f"[{ts}] {line}\n")
+        self.update_session_loot()
 
     # ------------------------------------------------------------------
     # Attack events
     # ------------------------------------------------------------------
 
     def log_attack_event(self, event: str) -> None:
-        """Log attack start/stop/result events."""
+        """Log attack start/stop/result events. fsync'd."""
         if not self._session_active:
             return
         filepath = self._session / "attacks.log"
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            with open(filepath, "a", encoding="utf-8") as fh:
-                fh.write(f"[{ts}] {event}\n")
-        except OSError:
-            pass
+        ts = datetime.now().strftime("%H:%M:%S")
+        _sync_append(filepath, f"[{ts}] {event}\n")
 
     # ------------------------------------------------------------------
     # MeshCore
@@ -1020,7 +1070,7 @@ class LootManager:
 
     def save_meshcore_node(self, node_id: str, node_type: str, name: str,
                            lat: float, lon: float, rssi: float, snr: float) -> None:
-        """Append node to meshcore_nodes.csv (dedup by node_id)."""
+        """Append node to meshcore_nodes.csv (dedup by node_id). fsync'd."""
         if not self._session_active:
             return
         path = self._session / "meshcore_nodes.csv"
@@ -1032,25 +1082,24 @@ class LootManager:
             else:
                 with open(path, "w", encoding="utf-8") as fh:
                     fh.write("timestamp,node_id,type,name,lat,lon,rssi,snr\n")
+                    _fsync_file(fh)
             ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             with open(path, "a", encoding="utf-8", newline="") as fh:
-                csv.writer(fh).writerow([ts, node_id, node_type, name, lat, lon, rssi, snr])
+                csv.writer(fh).writerow(
+                    [ts, node_id, node_type, name, lat, lon, rssi, snr])
+                _fsync_file(fh)
             self.update_session_loot()
         except OSError:
             pass
 
     def save_meshcore_message(self, channel: str, message: str, rssi: float) -> None:
-        """Append message to meshcore_messages.log."""
+        """Append message to meshcore_messages.log. fsync'd."""
         if not self._session_active:
             return
         path = self._session / "meshcore_messages.log"
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(f"[{ts}] [{channel}] {message} (RSSI:{rssi})\n")
-            self.update_session_loot()
-        except OSError:
-            pass
+        ts = datetime.now().strftime("%H:%M:%S")
+        _sync_append(path, f"[{ts}] [{channel}] {message} (RSSI:{rssi})\n")
+        self.update_session_loot()
 
     # ------------------------------------------------------------------
     # Bluetooth
@@ -1058,7 +1107,7 @@ class LootManager:
 
     def save_bt_device(self, mac: str, rssi: int, name: str,
                        is_airtag: bool, is_smarttag: bool) -> None:
-        """Append BLE device to bt_devices.csv (dedup by MAC). GPS auto-added if available."""
+        """Append BLE device to bt_devices.csv (dedup by MAC). fsync'd."""
         if not self._session_active:
             return
         path = self._session / "bt_devices.csv"
@@ -1069,33 +1118,31 @@ class LootManager:
             if fix.valid:
                 lat = round(fix.latitude, 7)
                 lon = round(fix.longitude, 7)
-        try:
-            if path.is_file():
+        if path.is_file():
+            try:
                 existing = path.read_text(encoding="utf-8")
-                if f",{mac}," in existing or existing.startswith(f"{mac},"):
-                    return  # already known
-            else:
-                with open(path, "w", encoding="utf-8") as fh:
-                    fh.write("timestamp,mac,rssi,name,airtag,smarttag,lat,lon\n")
-            ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(f"{ts},{mac},{rssi},{name},{is_airtag},{is_smarttag},{lat},{lon}\n")
-            self.update_session_loot()
-        except OSError:
-            pass
+            except OSError:
+                existing = ""
+            if f",{mac}," in existing or existing.startswith(f"{mac},"):
+                return  # already known
+        else:
+            _sync_write(path,
+                        "timestamp,mac,rssi,name,airtag,smarttag,lat,lon\n")
+        ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        _sync_append(
+            path,
+            f"{ts},{mac},{rssi},{name},{is_airtag},{is_smarttag},"
+            f"{lat},{lon}\n")
+        self.update_session_loot()
 
     def save_bt_airtag_event(self, airtags: int, smarttags: int) -> None:
-        """Log an AirTag scanner detection event."""
+        """Log an AirTag scanner detection event. fsync'd."""
         if not self._session_active:
             return
         path = self._session / "bt_airtag.log"
-        try:
-            ts = datetime.now().strftime("%H:%M:%S")
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(f"[{ts}] AirTags:{airtags} | SmartTags:{smarttags}\n")
-            self.update_session_loot()
-        except OSError:
-            pass
+        ts = datetime.now().strftime("%H:%M:%S")
+        _sync_append(path, f"[{ts}] AirTags:{airtags} | SmartTags:{smarttags}\n")
+        self.update_session_loot()
 
     # ------------------------------------------------------------------
     # GPS point collection (for Map tab)

@@ -4336,16 +4336,35 @@ class WatchDogsGame:
             pyxel.rect(px + pw - 3, bar_y, 2, bar_h, C_DIM)
 
     def _draw_markers(self):
+        """Draw handshake and MeshCore node markers. Always visible at any
+        zoom level; label shown from zoom 5 up."""
+        zoom = self.proj.zoom
         for m in self.markers:
             sx, sy = self.proj.geo_to_screen(m.lat, m.lon)
-            if not self.proj.screen_visible(sx, sy): continue
-            if pyxel.frame_count % 30 < 20:
-                pyxel.circb(sx, sy, 4, C_ERROR)
-            pyxel.rect(sx-2, sy-1, 5, 4, C_ERROR)
-            pyxel.rect(sx-1, sy-3, 3, 2, C_ERROR)
-            pyxel.pset(sx, sy, C_WARNING)
-            if self.proj.zoom >= 5:
-                pyxel.text(sx+5, sy-3, m.label, C_ERROR)
+            if not self.proj.screen_visible(sx, sy):
+                continue
+            if m.type == "meshcore":
+                # Cyan diamond + pulsing ring, always visible
+                c = C_HACK_CYAN
+                if pyxel.frame_count % 40 < 22:
+                    pyxel.circb(sx, sy, 6, c)
+                pyxel.rect(sx - 2, sy - 2, 5, 5, c)
+                pyxel.pset(sx, sy, 0)
+                pyxel.pset(sx, sy - 3, c)
+                pyxel.pset(sx, sy + 3, c)
+                pyxel.pset(sx - 3, sy, c)
+                pyxel.pset(sx + 3, sy, c)
+                if zoom >= 4:
+                    pyxel.text(sx + 6, sy - 3, m.label, c)
+            else:
+                # Handshake — red skull style
+                if pyxel.frame_count % 30 < 20:
+                    pyxel.circb(sx, sy, 4, C_ERROR)
+                pyxel.rect(sx - 2, sy - 1, 5, 4, C_ERROR)
+                pyxel.rect(sx - 1, sy - 3, 3, 2, C_ERROR)
+                pyxel.pset(sx, sy, C_WARNING)
+                if zoom >= 5:
+                    pyxel.text(sx + 5, sy - 3, m.label, C_ERROR)
 
     def _draw_wifi(self):
         for net in self.wifi_networks:
@@ -4386,11 +4405,13 @@ class WatchDogsGame:
                 pyxel.rect(sx-1, sy-1, 3, 3, d.color if blink > 0 else 2)
 
     def _draw_aircraft(self):
-        """Draw ADS-B aircraft on the map."""
+        """Draw ADS-B aircraft on the map. Always visible regardless of
+        zoom; label from zoom 4 up."""
         try:
             aircraft_list = list(self._sdr.aircraft.values())
         except Exception:
             return
+        zoom = self.proj.zoom
         for ac in aircraft_list:
             if not ac.has_position:
                 continue
@@ -4404,18 +4425,20 @@ class WatchDogsGame:
                 c = C_WARNING
             else:
                 c = C_HACK_CYAN
-            # Aircraft icon: small arrow shape
-            blink = pyxel.frame_count % 40 < 35
-            if blink:
-                pyxel.pset(sx, sy - 2, c)
-                pyxel.line(sx - 2, sy, sx + 2, sy, c)
-                pyxel.pset(sx - 1, sy + 1, c)
-                pyxel.pset(sx + 1, sy + 1, c)
+            # Plane icon — visible plus-shape with blinking pulse ring
+            pyxel.line(sx - 3, sy, sx + 3, sy, c)       # wings
+            pyxel.pset(sx, sy - 2, c)                   # nose
+            pyxel.pset(sx, sy - 1, c)
+            pyxel.pset(sx, sy + 1, c)
+            pyxel.pset(sx - 1, sy + 2, c)               # tail fins
+            pyxel.pset(sx + 1, sy + 2, c)
+            if pyxel.frame_count % 40 < 14:
+                pyxel.circb(sx, sy, 5, c)
             # Label at zoom >= 4
-            if self.proj.zoom >= 4:
+            if zoom >= 4:
                 label = ac.callsign or ac.icao
                 alt_k = ac.altitude // 1000
-                pyxel.text(sx + 4, sy - 3, f"{label} {alt_k}k", c)
+                pyxel.text(sx + 6, sy - 4, f"{label} {alt_k}k", c)
 
     def _draw_sensors(self):
         """Draw 433 MHz sensors on the map."""
