@@ -8,6 +8,88 @@ minor versions.
 
 ---
 
+## [0.9.1] — 2026-04-19
+
+Readability, performance and data-loss protection. No new gameplay.
+
+### Added
+
+- **Spleen 5x8 BDF font** (BSD-2-Clause) applied globally via a
+  `pyxel.text` monkey-patch. The built-in 4x6 pyxel font is unreadable on
+  the uConsole panel; Spleen 5x8 is thicker and more legible without
+  giving up much density. The same binary covers every text call in the
+  game — HUD, menus, overlays, dialogs, terminal, MeshCore chat.
+- **MeshCore node + ADS-B aircraft markers** are now drawn as distinct
+  shapes that remain visible at every zoom level — cyan diamond + pulse
+  ring for MeshCore nodes, plus-shaped plane with altitude-colored blink
+  ring for aircraft. Previously they collapsed to a single pixel when
+  zoomed out to continent or globe view.
+- **`loot_manager._fsync_file` / `_sync_append` / `_sync_write`
+  helpers** that call `os.fsync` after every critical append. Used by
+  portal password capture, evil twin capture, wardriving CSV (both WiFi
+  and BLE paths), handshakes (.txt / .pcap / .hccapx), MeshCore nodes
+  and messages, BT devices, AirTag events, attacks log, and the
+  `loot_db.json` atomic-rename write. Previously these went only into
+  the OS page cache and could be lost on a hard power cut.
+- **Periodic background sync thread** (`loot-backup`, daemon). Every
+  30 seconds it `fsync`s the open serial log handle and calls
+  `os.sync()` so anything still sitting in the kernel's dirty-page
+  cache reaches the SD card. Runs off the game loop so the ~100 ms–2 s
+  `os.sync` cost doesn't show up as frame drops. `close()` now stops
+  the thread and runs a final `flush_all + os.sync` before writing the
+  session summary.
+
+### Changed
+
+- **Full UI relayout for the new font** — ~60 places that computed
+  widths from `len(text) * 4` or heights as `+6` / `+8` now use 5 / 8,
+  and many hardcoded column offsets were widened. Affects: top and
+  bottom HUDs, XP bar / badges / battery / zoom anchors, main menu tabs
+  and item rows, input dialog fields, confirm-quit and GPS-wait
+  dialogs, Evil Twin and Portal and Flash and Captured-Data pickers,
+  cluster popup, MeshCore chat and contacts panel, Flipper Zero and
+  MITM and Watch and Loot and Whitelist sub-screens, hacker-quip
+  bubble, MeshCore toast and chat bubbles.
+- **MeshCore Messenger no longer uses its private 8x8 `_big_font`** —
+  it now inherits the global Spleen 5x8 so the whole game reads as one
+  font family. `_big_font` is kept loaded for any future overlay that
+  wants it but isn't referenced by the chat path.
+- **Main menu item height** 10 → 13 px; tab height 9 → 12 px.
+- **Terminal scroll hint** now reads `Fn+U/Fn+K scroll` and fits
+  alongside the new line spacing (9 lines visible at 5x8, previously
+  ~22 lines at 4x6 that were too small to read).
+
+### Performance
+
+- **Cluster color and radius cached at `_update_clusters` time**
+  instead of recomputed per frame per cluster. `_cluster_color()` used
+  to iterate every point's `type` on every draw.
+- **Coastline segment bounding boxes precomputed at `__init__`** from
+  the static `COASTLINES` table. `_draw_coastlines` no longer builds
+  `lats`/`lons` list-comprehensions or calls `min`/`max` for each of
+  ~100 segments every frame. The zoom≥5 `pset` pass was merged into
+  the main line-draw loop so `geo_to_screen` runs once per point
+  instead of twice.
+- **Terminal line coloring moved from `_draw_terminal` to
+  `_term_add`** and cached in a parallel `_terminal_colors` list. The
+  draw loop used to re-evaluate ~11 string checks per visible line per
+  frame; now it just indexes into the cached color.
+
+Combined, these three changes free roughly 10–20 ms of the 33 ms / 30 FPS
+budget on the uConsole, measurably smoother when the map has many loot
+points and the terminal is actively streaming.
+
+### Fixed
+
+- **`loot_db.json` power-cut window** — the atomic-rename write now
+  `fsync`s the tmp file before `rename`, so a crash between write and
+  rename can't leave a zero-byte `loot_db.json`.
+- **MeshCore nodes and ADS-B aircraft rendered identically** to
+  handshake markers (small red skull) because `_draw_markers` didn't
+  branch on `MapMarker.type`. They now have their own look.
+
+---
+
 ## [0.9.0] — 2026-04-12 (early access release)
 
 First public release. The core gameplay loop is complete and stable. Several
@@ -123,4 +205,5 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
-[0.9.0]: https://github.com/LOCOSP/esp32-watch-dogs/releases/tag/v0.9.0
+[0.9.1]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/LOCOSP/WatchDogsGo/releases/tag/v0.9.0
