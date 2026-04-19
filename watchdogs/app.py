@@ -3934,13 +3934,16 @@ class WatchDogsGame:
             self._draw_coastlines()
         self._draw_grid()
         self._draw_loot_points()
-        self._draw_markers()
         self._draw_wifi()
         self._draw_ble()
-        self._draw_aircraft()
-        self._draw_sensors()
         self._draw_scan_fx()
         self._draw_player()
+        # Radar-style overlays go on top of the player skull so they're
+        # visible even at low zoom, where every source within the dongle
+        # range lands within the 12-pixel ring around the centre.
+        self._draw_aircraft()
+        self._draw_sensors()
+        self._draw_markers()
         self._draw_particles()
         self._draw_hack_bar()
         self._draw_glitch()
