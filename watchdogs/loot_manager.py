@@ -22,6 +22,7 @@ import io
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -132,6 +133,53 @@ class LootManager:
 
         # Load or build aggregate loot database
         self._db = self._load_or_build_db()
+
+        # Periodic background sync — protects against power loss between
+        # event-driven fsyncs. Every BACKUP_INTERVAL seconds it fsyncs the
+        # open serial log handle and calls os.sync() so everything still
+        # sitting in the OS page cache gets pushed to the SD card.
+        self._backup_stop = False
+        self._backup_thread = threading.Thread(
+            target=self._periodic_backup_loop,
+            name="loot-backup",
+            daemon=True,
+        )
+        self._backup_thread.start()
+
+    BACKUP_INTERVAL = 30  # seconds between sync passes
+
+    def _periodic_backup_loop(self) -> None:
+        """Run on a daemon thread; fsync the serial log and os.sync the FS.
+
+        os.sync() is a syscall that schedules all dirty pages across every
+        mounted filesystem to be written out. It can take ~100 ms–2 s on a
+        busy SD card, which is why it runs off the game loop thread.
+        """
+        while not self._backup_stop:
+            # Use short sleeps so shutdown is responsive
+            for _ in range(self.BACKUP_INTERVAL):
+                if self._backup_stop:
+                    return
+                time.sleep(1)
+            self.flush_all()
+
+    def flush_all(self) -> None:
+        """Force every buffered write to reach the SD card.
+
+        Safe to call from any thread. Called automatically every
+        BACKUP_INTERVAL seconds; also hookable for pre-shutdown flushes.
+        """
+        fh = self._serial_fh
+        if fh is not None:
+            try:
+                fh.flush()
+                os.fsync(fh.fileno())
+            except (OSError, ValueError):
+                pass  # Handle may be closed mid-call; ignore.
+        try:
+            os.sync()
+        except AttributeError:
+            pass  # Non-POSIX — nothing else we can do.
 
     @property
     def session_path(self) -> str:
@@ -1238,11 +1286,16 @@ class LootManager:
 
     def close(self) -> None:
         """Close file handles, write session summary, and update loot DB."""
+        # Stop background sync thread before closing the handle it touches
+        self._backup_stop = True
+        self.flush_all()
+
         if self._serial_fh:
             try:
                 self._serial_fh.close()
             except OSError:
                 pass
+            self._serial_fh = None
 
         # Write session summary
         if self._session_active:
@@ -1254,9 +1307,16 @@ class LootManager:
                     for f in sorted(self._session.rglob("*")):
                         if f.is_file() and f.name != "session_info.txt":
                             size = f.stat().st_size
-                            fh.write(f"  {f.relative_to(self._session)} ({size} bytes)\n")
+                            fh.write(f"  {f.relative_to(self._session)} "
+                                     f"({size} bytes)\n")
+                    _fsync_file(fh)
             except OSError:
                 pass
 
-            # Final DB update
+            # Final DB update + one last OS sync so every file on the card
+            # reflects our final state.
             self.update_session_loot()
+            try:
+                os.sync()
+            except AttributeError:
+                pass
