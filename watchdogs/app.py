@@ -446,6 +446,13 @@ class WatchDogsGame:
             self._big_font = pyxel.Font(str(_font_path))
         except Exception:
             self._big_font = None
+        # Terminal font — Spleen 6x12 is sharper and taller than pyxel's
+        # default 4x6. Fewer lines visible, but actually readable.
+        _term_font_path = _project_root / "assets" / "spleen-6x12.bdf"
+        try:
+            self._term_font = pyxel.Font(str(_term_font_path))
+        except Exception:
+            self._term_font = None
         try:
             self.loot = LootManager(_app_dir, gps_manager=self.gps)
         except Exception:
@@ -4525,9 +4532,20 @@ class WatchDogsGame:
             pyxel.text(W - 60, TERM_Y + 1, f"SCROLL +{self.term_scroll}", C_DIM)
         pyxel.text(W - 30, TERM_Y + 1, f"L:{total}", C_DIM)
 
-        line_h = 5
-        content_y = TERM_Y + 8
-        content_h = TERM_H - 10
+        # Use Spleen 6x12 when available — much more readable than the
+        # pyxel default 4x6. Falls back to built-in if load failed.
+        tf = self._term_font
+        if tf is not None:
+            line_h = 11       # 12px glyphs with tiny gap
+            char_w = 6
+            content_y = TERM_Y + 10
+            max_chars = (W - 8) // char_w  # ~105 chars fit at 640px
+        else:
+            line_h = 5
+            char_w = 4
+            content_y = TERM_Y + 8
+            max_chars = 150
+        content_h = TERM_H - (content_y - TERM_Y) - 2
         max_visible = content_h // line_h
 
         if self.term_scroll == 0:
@@ -4542,16 +4560,17 @@ class WatchDogsGame:
         for i in range(start, end):
             line = lines_snap[i]
             c = colors_snap[i] if have_colors else C_TEXT
-            pyxel.text(4, y, line[:150], c)
+            pyxel.text(4, y, line[:max_chars], c, tf)
             y += line_h
-            if y >= TERM_Y + TERM_H - 2:
+            if y >= TERM_Y + TERM_H - line_h:
                 break
 
         if self.term_scroll == 0 and pyxel.frame_count % 30 < 20:
-            pyxel.text(4, min(y, TERM_Y + TERM_H - 7), "_", C_HACK_CYAN)
+            pyxel.text(4, min(y, TERM_Y + TERM_H - line_h - 1), "_",
+                       C_HACK_CYAN, tf)
         if total > max_visible and self.term_scroll == 0:
-            pyxel.text(W - 100, TERM_Y + TERM_H - 7,
-                       "Fn+U/Fn+K scroll", C_DIM)
+            pyxel.text(W - 120, TERM_Y + TERM_H - line_h - 1,
+                       "Fn+U/Fn+K scroll", C_DIM, tf)
 
     def _draw_mc_toast(self):
         """Draw MeshCore message toast on top of any screen."""
