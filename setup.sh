@@ -111,6 +111,31 @@ if [[ "$(uname)" == "Linux" ]]; then
     else
         info "System rpi-lgpio not available — using pip RPi.GPIO (OK for CM4/RPi4)"
     fi
+
+    # Link system python3-gi (gi.repository.GLib) into venv. Same rationale
+    # as rpi-lgpio above — system package has the native .so bindings that
+    # pip can't easily rebuild, and our venv doesn't use
+    # --system-site-packages.
+    if [ -d "/usr/lib/python3/dist-packages/gi" ]; then
+        VENV_SP=".venv/lib/python3.*/site-packages"
+        for sp in $VENV_SP; do
+            if [ -d "$sp" ] && [ ! -e "$sp/gi" ]; then
+                ln -sf /usr/lib/python3/dist-packages/gi "$sp/gi"
+                # _gi / _gi_cairo C extensions — PyGObject's native bindings
+                for so in /usr/lib/python3/dist-packages/_gi*.so \
+                          /usr/lib/python3/dist-packages/_gi_cairo*.so; do
+                    [ -f "$so" ] && ln -sf "$so" "$sp/$(basename $so)"
+                done
+                # pygobject_* helper installed alongside gi in some distros
+                for extra in pygobject_compat.py; do
+                    f="/usr/lib/python3/dist-packages/$extra"
+                    [ -f "$f" ] && ln -sf "$f" "$sp/$extra"
+                done
+                ok "python3-gi linked into venv (BlueZ pairing agent)"
+                break
+            fi
+        done
+    fi
 fi
 
 # Verify critical imports (required)
@@ -132,6 +157,8 @@ MISSING_OPT=""
 .venv/bin/python3 -c "import netifaces" 2>/dev/null || MISSING_OPT="$MISSING_OPT netifaces"
 .venv/bin/python3 -c "import bleak" 2>/dev/null || MISSING_OPT="$MISSING_OPT bleak"
 .venv/bin/python3 -c "import dbus" 2>/dev/null || MISSING_OPT="$MISSING_OPT dbus-python"
+.venv/bin/python3 -c "from gi.repository import GLib" 2>/dev/null || \
+    MISSING_OPT="$MISSING_OPT python3-gi(apt)"
 .venv/bin/python3 -c "import LoRaRF" 2>/dev/null || MISSING_OPT="$MISSING_OPT LoRaRF"
 .venv/bin/python3 -c "import nacl" 2>/dev/null || MISSING_OPT="$MISSING_OPT PyNaCl"
 
@@ -174,11 +201,13 @@ if command -v apt-get &>/dev/null; then
     command -v pactl &>/dev/null || SYS_NEEDED="$SYS_NEEDED pulseaudio-utils"
     # pinctrl is used by AIO v2 GPIO toggles (GPS/LoRa/SDR/USB power rails)
     command -v pinctrl &>/dev/null || SYS_NEEDED="$SYS_NEEDED raspi-utils"
-    # python3-gi provides gi.repository.GLib used by the BlueZ pairing agent
-    # for the PipBoy watch. Without it the agent silent-fails and the new
-    # firmware (MITM-authenticated NUS) can't complete pairing.
+    # python3-gi provides gi.repository.GLib, required by the BlueZ pairing
+    # agent for the PipBoy watch. It's distributed as a system package (can't
+    # go in requirements.txt — PyGObject on PyPI needs libgirepository1.0-dev
+    # + gobject-introspection anyway, same native deps). Symlinked into the
+    # game's venv a few lines below, same pattern as rpi-lgpio.
     python3 -c "from gi.repository import GLib" 2>/dev/null || \
-        SYS_NEEDED="$SYS_NEEDED python3-gi"
+        SYS_NEEDED="$SYS_NEEDED python3-gi gir1.2-glib-2.0"
 
     if [ -n "$SYS_NEEDED" ]; then
         info "Installing:$SYS_NEEDED"

@@ -80,6 +80,13 @@ def _check_deps() -> list[tuple[str, str, bool, bool]]:
     except ImportError:
         checks.append(("dbus-python", "NOT INSTALLED", False, False))
 
+    # python3-gi — BlueZ pairing agent for PipBoy watch (new MITM NUS)
+    try:
+        from gi.repository import GLib  # noqa: F401
+        checks.append(("python3-gi", "OK", True, False))
+    except ImportError:
+        checks.append(("python3-gi", "NOT INSTALLED (apt)", False, False))
+
     # LoRaRF — LoRa SX1262
     try:
         import LoRaRF
