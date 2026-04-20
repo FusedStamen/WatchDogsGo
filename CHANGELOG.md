@@ -8,6 +8,74 @@ minor versions.
 
 ---
 
+## [0.9.2] — 2026-04-20
+
+Integration pass for the **LilyGO T-Watch Ultra** (PipBoy-3000 firmware).
+The watch firmware ≥ v0.4 hardened its BLE surface by requiring
+MITM-authenticated encryption on the Nordic UART Service characteristics
+— unauthenticated peers can no longer read notifications or issue
+commands. This release brings the game in line with that change and
+makes the first-pair flow work end-to-end on the uConsole.
+
+### Added
+
+- **Explicit `bluetoothctl pair` pre-step** in
+  `watch_manager._async_connect`. Before opening the GATT session we
+  now check `bluetoothctl info <addr>` for `Paired: yes` / `Trusted: yes`
+  and, if either is missing, run `bluetoothctl pair <addr>` in a worker
+  thread with a 90-second timeout. That drives BlueZ into the pair
+  state cleanly and routes the passkey prompt through our existing
+  D-Bus Agent1 (`KeyboardDisplay` IO capability, `RequestPasskey` →
+  `provide_pin()` from the game UI). After success we mark the device
+  trusted so every subsequent connect is silent. The previous flow
+  relied on bleak's implicit Insufficient-Authentication retry, which
+  is flaky on BlueZ.
+- **`python3-gi` system dependency** installed + symlinked into the
+  game's venv by `setup.sh`. `gi.repository.GLib` is what the BlueZ
+  pairing agent's GLib main loop runs on; without it the agent
+  silent-failed and the new firmware's pair request had nowhere to go.
+  Same pattern we already use for `rpi-lgpio`: `apt install python3-gi
+  gir1.2-glib-2.0`, then symlink `/usr/lib/python3/dist-packages/gi` +
+  the `_gi*.so` / `_gi_cairo*.so` native extensions into
+  `.venv/lib/pythonX.Y/site-packages/`. It can't go in
+  `requirements.txt` because PyGObject via pip still needs
+  `libgirepository1.0-dev` + `gobject-introspection` at apt level, and
+  builds are fragile on the Raspberry Pi class targets.
+- **First-run preflight check** for `python3-gi` added to
+  `watchdogs/__main__.py` alongside `bleak` / `dbus-python`. If anyone
+  pulls just the code without running `setup.sh`, the boot screen now
+  shows `python3-gi — NOT INSTALLED (apt)` before the game launches.
+
+### Changed
+
+- **PIN entry overlay** in the Watch screen rewritten for the new flow:
+  240×80 → 320×112 with explicit wording ("Look at the watch — it shows
+  a 6-digit PIN. Type it here to complete pairing."), cyan PIN digits,
+  and the full key hint `[0-9] Type   [BKSP] Erase   [ENTER] Confirm`.
+  Centering redone for the Spleen 5x8 font (6 chars × 5 px).
+
+### Fixed
+
+- **Aircraft, ADS-B sensors and MeshCore nodes vanished at low zoom.**
+  The map render order was calling `_draw_aircraft / _draw_sensors /
+  _draw_markers` before `_draw_player`, and the player skull is a
+  ~9×9 sprite with a 10–12-pixel scan ring drawn at the map centre.
+  At low zoom every local source lands within that ring, so the plane
+  plus-shapes and node diamonds were simply being overdrawn by the
+  skull — visible only at CLOSE-UP zoom where quantization pushed
+  them outside the ring. Render order is now:
+  player → aircraft → sensors → markers → particles. Radar blips
+  now sit cleanly on top of the player.
+
+### Version
+
+- `__version__` bumped `0.9.0` → `0.9.2`. The 0.9.1 CHANGELOG entry
+  ships on top of the same `0.9.0` string because the version
+  constant wasn't updated at the time of that release; the next pypi-
+  style artefact is this one.
+
+---
+
 ## [0.9.1] — 2026-04-19
 
 Readability, performance and data-loss protection. No new gameplay.
@@ -334,5 +402,6 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.2]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/LOCOSP/WatchDogsGo/releases/tag/v0.9.0
