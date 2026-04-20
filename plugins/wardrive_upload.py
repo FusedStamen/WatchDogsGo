@@ -25,6 +25,27 @@ from urllib.error import URLError, HTTPError
 
 from plugins.plugin_base import PluginBase, PluginMenuItem
 
+try:
+    from watchdogs import __version__ as _GAME_VERSION
+except Exception:
+    _GAME_VERSION = "0.0.0"
+
+# Cloudflare's Bot Fight Mode blocks the default urllib User-Agent
+# ("Python-urllib/3.x") with HTTP 403 error code 1010. Identify ourselves
+# explicitly so the request looks like a legitimate game client rather
+# than unattended scraper traffic.
+USER_AGENT = f"WatchDogsGo/{_GAME_VERSION} (+https://locosp.github.io/WatchDogsGo)"
+
+
+def _open(req: Request, timeout: float = 30):
+    """Thin wrapper around urlopen that sets our required headers before
+    every call. Centralises User-Agent + Accept so future endpoints can't
+    forget them and get swallowed by Cloudflare's WAF."""
+    req.add_header("User-Agent", USER_AGENT)
+    req.add_header("Accept", "application/json")
+    return urlopen(req, timeout=timeout)
+
+
 log = logging.getLogger(__name__)
 
 # Auth mode mapping from WiGLE CSV to simple format
@@ -569,7 +590,7 @@ class WardriveUpload(PluginBase):
                 req = Request(self._api_url, data=payload, method="POST")
                 req.add_header("Content-Type", "application/json")
                 req.add_header("X-API-Key", self._api_key)
-                with urlopen(req, timeout=30) as resp:
+                with _open(req, timeout=30) as resp:
                     result = json.loads(resp.read().decode())
                     imp = result.get("imported", 0)
                     dup = result.get("duplicates", 0)
@@ -602,7 +623,7 @@ class WardriveUpload(PluginBase):
                         req = Request(self._api_url, data=payload, method="POST")
                         req.add_header("Content-Type", "application/json")
                         req.add_header("X-API-Key", self._api_key)
-                        with urlopen(req, timeout=30) as resp:
+                        with _open(req, timeout=30) as resp:
                             result = json.loads(resp.read().decode())
                             imp = result.get("imported", 0)
                             self._log_add(f"  Retry OK: +{imp}", 11)
@@ -686,7 +707,7 @@ class WardriveUpload(PluginBase):
             req = Request(url, data=payload, method="POST")
             req.add_header("Content-Type", "application/json")
             req.add_header("X-API-Key", self._api_key)
-            with urlopen(req, timeout=15) as resp:
+            with _open(req, timeout=15) as resp:
                 result = json.loads(resp.read().decode())
             all_badges = result.get("badges", [])
             game_imported = result.get("game_imported", 0)
@@ -754,7 +775,7 @@ class WardriveUpload(PluginBase):
         try:
             req = Request(self._api_me_url())
             req.add_header("X-API-Key", self._api_key)
-            with urlopen(req, timeout=15) as resp:
+            with _open(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             if not data.get("ok"):
                 err = data.get("error", "unknown error")
@@ -856,7 +877,7 @@ class WardriveUpload(PluginBase):
             req = Request(self._api_url, data=payload, method="POST")
             req.add_header("Content-Type", "application/json")
             req.add_header("X-API-Key", self._api_key)
-            with urlopen(req, timeout=10) as resp:
+            with _open(req, timeout=10) as resp:
                 result = json.loads(resp.read().decode())
                 total = result.get("total", "?")
                 self._log_add(f"API OK — {total} records on server", 11)
@@ -945,7 +966,7 @@ class WardriveUpload(PluginBase):
             try:
                 req = Request(poll_url)
                 req.add_header("X-API-Key", self._api_key)
-                with urlopen(req, timeout=5) as resp:
+                with _open(req, timeout=5) as resp:
                     data = json.loads(resp.read().decode())
                     if data.get("pending"):
                         token = data.get("token", "")
