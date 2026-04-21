@@ -8,6 +8,50 @@ minor versions.
 
 ---
 
+## [0.9.3] — 2026-04-21
+
+Hotfix for `wdgwars.pl` upload flow. The server now sits behind Cloudflare
+with Bot Fight Mode enabled, which drops HTTP requests carrying a generic
+User-Agent (Python's urllib defaults to `Python-urllib/3.x`) with
+**HTTP 403 error code 1010**. Symptom reported by a user:
+
+```
+/api/me: HTTP 403 — Invalid signature
+Upload All: HTTP 403 error code: 1010    (×3 sessions)
+Done: 0/4 sessions
+```
+
+### Fixed
+
+- **`plugins/wardrive_upload.py`** now sets an explicit User-Agent on
+  every request to the wardrive server. Format matches the spec the
+  wdgwars admin provided: `WatchDogsGo/<version> (<platform>; Python/<ver>)`
+  — e.g. `WatchDogsGo/0.9.3 (uConsole; Python/3.11)`. Platform is
+  `uConsole` on Linux (our target), real `platform.system()` value
+  elsewhere so dev boxes are distinguishable in server access logs.
+- **Centralised HTTP call site** as `_open(req, timeout)` wrapper that
+  injects `User-Agent` + `Accept: application/json` into every
+  `urllib.request.Request` before it reaches `urlopen`. All 6 request
+  sites in the plugin (POST `/api/upload/`, POST `/api/badges/`,
+  GET `/api/me`, auth-push POST + GET polling) now route through it,
+  so new endpoints can't accidentally ship without the header.
+
+### Verified
+
+- Live test against `https://wdgwars.pl/api/me` with the new UA and a
+  garbage `X-API-Key` returns **HTTP 401 "Missing or invalid API key"**
+  — the request reaches the application layer instead of being dropped
+  by Cloudflare. Exactly the "good case" the admin described.
+
+### What this does NOT fix
+
+- If `/api/me` still returns **403 "Invalid signature"** after pulling
+  this release, the user's API key is actually invalid on the server —
+  regenerate it on the wdgwars.pl profile page and re-enter via
+  `PLUGINS > Watch Dogs Go Wars Sync > Set API Key`.
+
+---
+
 ## [0.9.2] — 2026-04-20
 
 Integration pass for the **LilyGO T-Watch Ultra** (PipBoy-3000 firmware).
@@ -402,6 +446,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.3]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/LOCOSP/WatchDogsGo/releases/tag/v0.9.0
