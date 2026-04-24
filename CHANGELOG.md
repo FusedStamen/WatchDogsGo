@@ -8,6 +8,64 @@ minor versions.
 
 ---
 
+## [0.9.4] — 2026-04-24
+
+Installer hardening after a user bug report: the Debian package
+`dump1090-mutability` that the installer pointed at has been an
+**archived upstream since 2018** — no RTL-SDR v4 support, no fixes.
+The ADS-B Radar add-on would bail with an unhelpful
+"Install: sudo apt install dump1090-mutability" message that then
+failed on newer Debian images where the package no longer exists.
+
+Full audit of every external binary the game shells out to
+(`shutil.which` / `subprocess`) found one more gap: `iw`, used by
+Dragon Drain and the serial bridge-interface check, was never in the
+apt list — it is usually preinstalled on Raspbian, but a user on a
+clean Debian image would silently lose those features.
+
+### Fixed
+
+- **`setup.sh`** now builds the actively-maintained
+  [FlightAware `dump1090` fork](https://github.com/flightaware/dump1090)
+  from source when `dump1090` is missing. Pulls `librtlsdr-dev`,
+  `pkg-config`, `build-essential`, `git` first, clones shallow, makes
+  with `-j$(nproc)`, installs to `/usr/local/bin/dump1090`. The binary
+  name stays `dump1090` so the game's existing detection
+  (`shutil.which("dump1090")`) and `dump1090 --net --quiet` subprocess
+  call keep working unchanged.
+- **`setup.sh`** adds `iw` to the apt dependency list so Dragon Drain
+  and interface bridging work on clean Debian/Ubuntu installs.
+- **`watchdogs/app.py`** no longer points the user at an archived apt
+  package when `dump1090` is missing. The in-game message now tells
+  them to rerun `./setup.sh` which builds the FA fork.
+- **`README.md`** system-dependency list rewritten accordingly, plus
+  adds the `python3-gi` / `gir1.2-glib-2.0` line that 0.9.2 needed
+  but never made it into the docs.
+
+### Audit summary
+
+Cross-checked `requirements.txt`, `setup.sh` and runtime `shutil.which`
+calls. All non-archived tools used by the game are covered:
+
+| Binary | Package | Installed by setup.sh |
+|--------|---------|----------------------|
+| `tcpdump` | `tcpdump` | yes |
+| `airmon-ng` / `aircrack-ng` | `aircrack-ng` | yes |
+| `iw` | `iw` | **yes (new in 0.9.4)** |
+| `rtl_433` | `rtl-433` | yes |
+| `bluetoothctl`, `btmgmt` | `bluez` | yes |
+| `hciconfig` | `bluez-tools` | yes |
+| `pactl` | `pulseaudio-utils` | yes |
+| `pinctrl` | `raspi-utils` | yes |
+| `dump1090` | built from FA source | **yes (new in 0.9.4)** |
+| `aiov2_ctl` | git clone + `./aiov2_ctl.py --install` | yes (RPi only) |
+
+`bdaddr` (used by `race_attack.py` for BLE MAC spoofing) is not in any
+standard Debian package and is left off the list — the module already
+falls back to `btmgmt public-addr` when it is missing.
+
+---
+
 ## [0.9.3] — 2026-04-21
 
 Hotfix for `wdgwars.pl` upload flow. The server now sits behind Cloudflare
@@ -446,6 +504,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.4]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.0...v0.9.1

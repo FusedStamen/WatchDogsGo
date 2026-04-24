@@ -71,10 +71,14 @@ nano secrets.conf
 The installer pulls these system packages (Debian/Ubuntu):
 
 - `python3-venv`, `libsdl2-dev`, `libsdl2-image-dev` — for pyxel game engine
-- `tcpdump`, `aircrack-ng` — for MITM and Dragon Drain attacks
-- `dump1090-mutability`, `rtl-433` — for RTL-SDR (ADS-B and 433 MHz)
+- `tcpdump`, `aircrack-ng`, `iw` — for MITM and Dragon Drain attacks
+- `rtl-433` — for RTL-SDR 433 MHz sensor decoding
+- `dump1090` — ADS-B; built from [flightaware/dump1090](https://github.com/flightaware/dump1090)
+  since the Debian `dump1090-mutability` package has been archived upstream
+  since 2018 and no longer supports RTL-SDR v4 tuners
 - `bluez`, `bluez-tools`, `pulseaudio-utils` — for BLE attacks
 - `python3-rpi-lgpio` — GPIO library for Raspberry Pi 5 / CM5
+- `python3-gi`, `gir1.2-glib-2.0` — BlueZ pairing agent (PipBoy watch MITM)
 
 And these Python packages (in `.venv`):
 

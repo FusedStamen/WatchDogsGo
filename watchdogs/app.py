@@ -2345,7 +2345,12 @@ class WatchDogsGame:
                     self._term_add(f"[SDR] {data}", raw=True)
             if not self._sdr.has_dump1090():
                 self.msg("[ADS-B] dump1090 not installed", C_ERROR)
-                self._term_add("[SDR] Install: sudo apt install dump1090-mutability", raw=True)
+                self._term_add("[SDR] Run ./setup.sh — it builds the FlightAware",
+                               raw=True)
+                self._term_add("[SDR] fork from source (apt dump1090-mutability",
+                               raw=True)
+                self._term_add("[SDR] was archived upstream in 2018).",
+                               raw=True)
         self.glitch_timer = 2
 
     def _sdr_433(self):

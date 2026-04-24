@@ -195,7 +195,10 @@ if command -v apt-get &>/dev/null; then
     SYS_NEEDED=""
     command -v tcpdump &>/dev/null || SYS_NEEDED="$SYS_NEEDED tcpdump"
     command -v airmon-ng &>/dev/null || SYS_NEEDED="$SYS_NEEDED aircrack-ng"
-    command -v dump1090 &>/dev/null || SYS_NEEDED="$SYS_NEEDED dump1090-mutability"
+    # `iw` is used by Dragon Drain (monitor mode check) and serial_manager
+    # (bridge interface detection). Preinstalled on Raspbian/RPi OS but not
+    # on a clean Debian/Ubuntu server, so request it explicitly.
+    command -v iw &>/dev/null || SYS_NEEDED="$SYS_NEEDED iw"
     command -v rtl_433 &>/dev/null || SYS_NEEDED="$SYS_NEEDED rtl-433"
     command -v hciconfig &>/dev/null || SYS_NEEDED="$SYS_NEEDED bluez bluez-tools"
     command -v pactl &>/dev/null || SYS_NEEDED="$SYS_NEEDED pulseaudio-utils"
@@ -213,7 +216,34 @@ if command -v apt-get &>/dev/null; then
         info "Installing:$SYS_NEEDED"
         sudo apt-get install -y $SYS_NEEDED 2>/dev/null && ok "System tools installed" || warn "Could not install:$SYS_NEEDED"
     else
-        ok "All system tools present (tcpdump, aircrack-ng, dump1090, rtl_433, bluez, pulseaudio-utils, pinctrl)"
+        ok "All system tools present (tcpdump, aircrack-ng, iw, rtl_433, bluez, pulseaudio-utils, pinctrl)"
+    fi
+
+    # --- dump1090 (FlightAware fork) -----------------------------------------
+    # The classic `dump1090-mutability` apt package has been an archived
+    # upstream since 2018 (no fixes, no RTL-SDR v4 support). Build the
+    # actively-maintained FlightAware fork from source — the binary still
+    # installs as `dump1090`, so the game's `shutil.which("dump1090")` and
+    # the `dump1090 --net --quiet` subprocess call work unchanged.
+    if ! command -v dump1090 &>/dev/null; then
+        info "dump1090 not found — building FlightAware fork from source..."
+        sudo apt-get install -y librtlsdr-dev pkg-config build-essential git \
+            2>/dev/null || warn "Could not install dump1090 build deps"
+        TMP=$(mktemp -d)
+        if git clone --depth=1 https://github.com/flightaware/dump1090.git \
+                "$TMP/dump1090" >/dev/null 2>&1; then
+            if (cd "$TMP/dump1090" && make -j"$(nproc)" >/dev/null 2>&1 \
+                    && sudo cp dump1090 /usr/local/bin/); then
+                ok "dump1090 (FlightAware) built and installed to /usr/local/bin"
+            else
+                warn "dump1090 build failed — ADS-B radar will be disabled"
+            fi
+        else
+            warn "Could not clone flightaware/dump1090 — ADS-B radar disabled"
+        fi
+        rm -rf "$TMP" 2>/dev/null
+    else
+        ok "dump1090 present ($(command -v dump1090))"
     fi
 
     # AIO v2 control (uConsole only — optional, install only if pinctrl exists
