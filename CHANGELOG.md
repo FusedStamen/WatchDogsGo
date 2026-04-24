@@ -8,6 +8,63 @@ minor versions.
 
 ---
 
+## [0.9.5] — 2026-04-24
+
+Runtime-selectable regional presets for the MeshCore radio. MeshCore
+upstream recently moved the default US/Canada preset from the legacy
+wide mode (`910.525 / BW250 / SF11 / CR5`) to narrow mode
+(`910.525 / BW62.5 / SF7 / CR5`), which is incompatible with the old
+preset — nodes running different settings physically cannot hear each
+other. Until now the game hard-coded EU/UK Narrow, so every US user
+was invisible to their local mesh.
+
+### Added
+
+- **`watchdogs/lora_manager.py` — `MESHCORE_PRESETS`** — six canonical
+  regional presets driving the SX1262:
+
+  | Key              | Label                                 | Freq       | BW     | SF | CR |
+  |------------------|---------------------------------------|------------|--------|----|----|
+  | `eu_uk_narrow`   | EU/UK Narrow (default)                | 869.618 MHz| 62.5 kHz| 8  | 5  |
+  | `eu_uk_default`  | EU/UK legacy wide                     | 869.525 MHz| 250 kHz | 11 | 5  |
+  | `us_ca_narrow`   | US/Canada Narrow (new upstream default)| 910.525 MHz| 62.5 kHz| 7  | 5  |
+  | `us_ca_default`  | US/Canada legacy wide                 | 910.525 MHz| 250 kHz | 11 | 5  |
+  | `anz_narrow`     | AU/NZ Narrow                          | 915.525 MHz| 62.5 kHz| 7  | 5  |
+  | `in_narrow`      | India Narrow                          | 865.525 MHz| 62.5 kHz| 7  | 5  |
+
+- **`ADDONS > MeshCore Region`** menu entry — opens an overlay picker
+  styled like the Evil Twin network picker (UP/DOWN + ENTER + ESC),
+  listing every preset with freq / BW / SF. Confirming persists the
+  choice to `~/.watchdogs_meshcore.json` and — if the radio is
+  currently running — stops and restarts the MeshCore sniffer on the
+  new settings immediately, without exiting to the menu.
+
+### Changed
+
+- **`LoRaManager.start_meshcore(region=None)`** now takes an optional
+  region key instead of hardcoding the EU preset. Callers in `app.py`
+  (auto-start on boot, `_toggle_lora`) pass `self._mc_region`.
+- **`load_meshcore_config()` / `save_meshcore_config()`** round-trip a
+  new `"region"` field. Unknown/missing keys fall back to
+  `DEFAULT_MESHCORE_REGION = "eu_uk_narrow"` so existing installs keep
+  their current behaviour on upgrade.
+
+### Why this matters — reported by a US MeshCore user
+
+> Old settings were: req=910.525, bw=250, cr=5, sf=11
+> New settings are: req=910.525, bw=62.5, cr=5, sf=7
+>
+> Based on the official map, the settings seem to be all over the
+> place. This is likely why I can't find anyone 😊
+
+Narrow mode concentrates TX energy and cuts airtime per packet, which
+lets more nodes share a channel with lower latency — but old-preset
+nodes simply cannot demodulate the new waveform. This release lets
+every user pick the preset that matches the mesh around them, right
+from the in-game menu, without editing JSON by hand.
+
+---
+
 ## [0.9.4] — 2026-04-24
 
 Installer hardening after a user bug report: the Debian package
@@ -504,6 +561,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.5]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.1...v0.9.2

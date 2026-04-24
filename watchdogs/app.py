@@ -171,6 +171,7 @@ MENU_CATS = [
         ("h", "BLE HID (WIP)",   "_bt_hid_wip",            "_bt_hid_wip",  None),
         ("i", "HID Type (WIP)",  "_bt_hid_wip",            "_bt_hid_wip",  None),
         ("9", "MeshCore Messenger", "_meshcore",            "meshcore",     None),
+        ("r", "MeshCore Region", "_meshcore_region",         "_mc_region_screen", None),
         ("f", "Flipper Zero",    "_flipper",               "_flipper",     None),
         ("a", "ADS-B Radar",     "_sdr_adsb",              "_sdr_adsb",    None),
         ("4", "433 MHz Scanner", "_sdr_433",               "_sdr_433",     None),
@@ -571,6 +572,11 @@ class WatchDogsGame:
             node_name = f"WatchDogs_{pub[:4].hex()}"
             save_meshcore_config(node_name, _mc_cfg.get("_channels", []))
         self._mc_node_name = node_name
+        # MeshCore regional preset (EU/UK, US/CA, ...) — picker in ADDONS menu.
+        from .lora_manager import DEFAULT_MESHCORE_REGION
+        self._mc_region = _mc_cfg.get("region", DEFAULT_MESHCORE_REGION)
+        self._mc_region_screen = False
+        self._mc_region_sel = 0
         self._mc_channels_list = _mc_cfg.get("_channels", [])
         self._mc_active_ch = 0
         self._mc_nodes_panel = False
@@ -801,7 +807,7 @@ class WatchDogsGame:
         if self._lora_enabled:
             try:
                 self._lora.set_mc_channels(self._mc_channels_list)
-                self._lora.start_meshcore()
+                self._lora.start_meshcore(self._mc_region)
                 self._term_add("[SYS] LoRa active — MeshCore auto-started",
                                raw=True)
                 lat = self.player_lat if self.gps_fix else 0.0
@@ -1414,6 +1420,8 @@ class WatchDogsGame:
             self._update_wl_screen()
         elif self._mc_screen:
             self._update_mc_screen()
+        elif self._mc_region_screen:
+            self._update_mc_region_picker()
         elif self._cluster_popup:
             self._update_cluster_popup()
         elif self.loot_screen:
@@ -1966,6 +1974,18 @@ class WatchDogsGame:
                 self._mc_help_shown = True
             return
 
+        # ── MeshCore Region picker ──
+        if cmd == "_meshcore_region":
+            from .lora_manager import MESHCORE_PRESETS
+            keys = list(MESHCORE_PRESETS.keys())
+            try:
+                self._mc_region_sel = keys.index(self._mc_region)
+            except ValueError:
+                self._mc_region_sel = 0
+            self._mc_region_screen = True
+            self.menu_open = False
+            return
+
         if cmd == "_flipper":
             if not self._flipper.connected:
                 self._flipper_log = []
@@ -2278,7 +2298,7 @@ class WatchDogsGame:
                 return
         # Start/stop MeshCore
         if new_state:
-            self._lora.start_meshcore()
+            self._lora.start_meshcore(self._mc_region)
             self._lora_enabled = True
             if self._lora.running:
                 self.msg("[LoRa] ON — MeshCore started", C_SUCCESS)
@@ -3920,6 +3940,9 @@ class WatchDogsGame:
         if self._mc_screen:
             self._draw_mc_screen()
             return
+        if self._mc_region_screen:
+            self._draw_mc_region_picker()
+            return
         if self.loot_screen:
             self._draw_loot_screen()
             self._draw_mc_toast()
@@ -5248,6 +5271,87 @@ class WatchDogsGame:
         hint = "UP/DOWN select  ENTER confirm  ESC "
         hint += "back" if self._attack_mode == "evil_twin" else "cancel"
         pyxel.text(dx + 4, dy + dh - 11, hint, C_DIM)
+
+    # ------------------------------------------------------------------
+    # MeshCore region picker (ADDONS > MeshCore Region)
+    # ------------------------------------------------------------------
+
+    def _update_mc_region_picker(self):
+        """UP/DOWN/ENTER/ESC for the MeshCore regional preset picker."""
+        import pyxel as px
+        from .lora_manager import MESHCORE_PRESETS, save_meshcore_config
+        keys = list(MESHCORE_PRESETS.keys())
+        if not keys:
+            self._mc_region_screen = False
+            return
+        if px.btnp(px.KEY_UP):
+            self._mc_region_sel = max(0, self._mc_region_sel - 1)
+        elif px.btnp(px.KEY_DOWN):
+            self._mc_region_sel = min(len(keys) - 1, self._mc_region_sel + 1)
+        elif px.btnp(px.KEY_RETURN):
+            new_region = keys[self._mc_region_sel]
+            old_region = self._mc_region
+            self._mc_region = new_region
+            # Persist to ~/.watchdogs_meshcore.json
+            try:
+                save_meshcore_config(self._mc_node_name,
+                                     self._mc_channels_list,
+                                     region=new_region)
+            except Exception as exc:
+                self._term_add(f"[MC] config save failed: {exc}", raw=True)
+            label = MESHCORE_PRESETS[new_region][4]
+            self.msg(f"[MC] Region: {label}", C_SUCCESS)
+            # Re-tune the radio right away if LoRa is currently sniffing
+            if self._lora_enabled and self._lora.running and \
+                    new_region != old_region:
+                try:
+                    self._lora.stop()
+                except Exception:
+                    pass
+                try:
+                    self._lora.start_meshcore(new_region)
+                    self._term_add(f"[MC] Retuned to {label}", raw=True)
+                except Exception as exc:
+                    self._term_add(f"[MC] retune failed: {exc}", raw=True)
+            self._mc_region_screen = False
+        elif px.btnp(px.KEY_ESCAPE):
+            self._mc_region_screen = False
+            self._esc_consumed_frame = pyxel.frame_count
+
+    def _draw_mc_region_picker(self):
+        """Draw MeshCore regional preset picker overlay."""
+        from .lora_manager import MESHCORE_PRESETS
+        keys = list(MESHCORE_PRESETS.keys())
+        # Solid dim background
+        pyxel.rect(0, HUD_TOP, W, TERM_Y - HUD_TOP, 0)
+        ROW_H = 14
+        dw = 440
+        dh = min(240, 70 + len(keys) * ROW_H)
+        dx = (W - dw) // 2
+        dy = (H - dh) // 2
+        pyxel.rect(dx, dy, dw, dh, 0)
+        pyxel.rectb(dx, dy, dw, dh, C_WARNING)
+        pyxel.rectb(dx + 1, dy + 1, dw - 2, dh - 2, C_COAST)
+        pyxel.text(dx + 4, dy + 4, "MESHCORE — Select Region", C_WARNING)
+        pyxel.line(dx + 2, dy + 14, dx + dw - 3, dy + 14, C_COAST)
+        pyxel.text(dx + 4, dy + 18,
+                   f"Current: {MESHCORE_PRESETS[self._mc_region][4]}",
+                   C_HACK_CYAN)
+        pyxel.line(dx + 2, dy + 28, dx + dw - 3, dy + 28, 1)
+        y = dy + 32
+        for i, key in enumerate(keys):
+            freq, sf, cr, bw, label = MESHCORE_PRESETS[key]
+            sel = (i == self._mc_region_sel)
+            if sel:
+                pyxel.rect(dx + 2, y - 1, dw - 4, ROW_H - 1, C_WARNING)
+            c_label = 0 if sel else C_TEXT
+            c_hz = 0 if sel else C_DIM
+            pyxel.text(dx + 6, y + 3, label, c_label)
+            freq_str = f"{freq / 1_000_000:.3f}MHz"
+            pyxel.text(dx + dw - 64, y + 3, freq_str, c_hz)
+            y += ROW_H
+        pyxel.text(dx + 4, dy + dh - 11,
+                   "UP/DOWN select   ENTER apply   ESC cancel", C_DIM)
 
     # ------------------------------------------------------------------
     # Flipper Zero screen

@@ -61,6 +61,41 @@ APRS_PREFIX = b"\x3c\xff\x01"
 PRESET_MESHCORE = (869_618_000, 8, 5, 62_500, "MeshCore 869.618 SF8 BW62.5k CR5")
 PRESET_MESHTASTIC = (869_525_000, 11, 8, 250_000, "Meshtastic 869.525 SF11 BW250k CR8")
 
+# ---------------------------------------------------------------------------
+# MeshCore regional presets.
+#
+# The public MeshCore mesh is split by region — the radio settings below are
+# the ones community maps/docs publish as canonical per ISM band. The Narrow
+# variants are the newer defaults pushed by MeshCore upstream (lower BW + SF7
+# for less airtime / more nodes per channel); the Default variants are the
+# legacy "wide" settings that older nodes still use. Picking the wrong one
+# means you physically cannot hear anyone nearby — hence the runtime picker.
+#
+# Format: (freq_hz, sf, cr, bw_hz, label)
+MESHCORE_PRESETS: dict[str, tuple[int, int, int, int, str]] = {
+    "eu_uk_narrow":   (869_618_000, 8,  5, 62_500,
+                       "EU/UK Narrow (869.618 SF8 BW62.5)"),
+    "eu_uk_default":  (869_525_000, 11, 5, 250_000,
+                       "EU/UK Default (869.525 SF11 BW250)"),
+    "us_ca_narrow":   (910_525_000, 7,  5, 62_500,
+                       "US/Canada Narrow (910.525 SF7 BW62.5)"),
+    "us_ca_default":  (910_525_000, 11, 5, 250_000,
+                       "US/Canada Default (910.525 SF11 BW250)"),
+    "anz_narrow":     (915_525_000, 7,  5, 62_500,
+                       "AU/NZ Narrow (915.525 SF7 BW62.5)"),
+    "in_narrow":      (865_525_000, 7,  5, 62_500,
+                       "India Narrow (865.525 SF7 BW62.5)"),
+}
+DEFAULT_MESHCORE_REGION = "eu_uk_narrow"
+
+
+def get_meshcore_preset(region: str | None):
+    """Return (freq, sf, cr, bw, label) for a region key. Falls back to
+    the default EU/UK Narrow if the key is unknown (e.g. old config)."""
+    if region and region in MESHCORE_PRESETS:
+        return MESHCORE_PRESETS[region]
+    return MESHCORE_PRESETS[DEFAULT_MESHCORE_REGION]
+
 # MeshCore protocol constants
 MESHCORE_PUBLIC_PSK = bytes.fromhex("8b3387e9c5cdea6ac9e5edbaa115cd72")
 MESHCORE_PUBLIC_HASH = 0x11
@@ -139,15 +174,23 @@ def load_meshcore_config() -> dict:
                 elif ch.get("psk_hex") and ch["name"] != "public":
                     channels.append(make_private_channel(ch["name"], ch["psk_hex"]))
             data["_channels"] = channels
+            # Normalise region key — fall back to default if missing/unknown
+            region = data.get("region")
+            if region not in MESHCORE_PRESETS:
+                region = DEFAULT_MESHCORE_REGION
+            data["region"] = region
             return data
     except Exception as exc:
         log.warning("meshcore config load error: %s", exc)
     # Empty node_name signals "first run, please generate unique name from pubkey"
-    return {"node_name": "", "_channels": [PUBLIC_CHANNEL]}
+    return {"node_name": "", "region": DEFAULT_MESHCORE_REGION,
+            "_channels": [PUBLIC_CHANNEL]}
 
 
-def save_meshcore_config(node_name: str, channels: list) -> None:
-    """Save config to ~/.watchdogs_meshcore.json."""
+def save_meshcore_config(node_name: str, channels: list,
+                         region: str | None = None) -> None:
+    """Save config to ~/.watchdogs_meshcore.json. `region` is a key from
+    MESHCORE_PRESETS; None preserves whatever was stored on disk."""
     import json
     path = _meshcore_config_path()
     ch_list = []
@@ -158,9 +201,20 @@ def save_meshcore_config(node_name: str, channels: list) -> None:
         if not ch.is_hashtag:
             d["psk_hex"] = ch.psk.hex()
         ch_list.append(d)
+    # Preserve existing region if caller didn't pass one
+    if region is None:
+        try:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    region = json.load(f).get("region")
+        except Exception:
+            pass
+    if region not in MESHCORE_PRESETS:
+        region = DEFAULT_MESHCORE_REGION
     try:
         with open(path, "w") as f:
-            json.dump({"node_name": node_name, "channels": ch_list}, f, indent=2)
+            json.dump({"node_name": node_name, "region": region,
+                       "channels": ch_list}, f, indent=2)
     except Exception as exc:
         log.warning("meshcore config save error: %s", exc)
 
@@ -315,9 +369,10 @@ class LoRaManager:
         )
         self._thread.start()
 
-    def start_meshcore(self) -> None:
-        """Start sniffer on MeshCore EU/UK Narrow (869.618 MHz)."""
-        freq, sf, cr, bw, label = PRESET_MESHCORE
+    def start_meshcore(self, region: str | None = None) -> None:
+        """Start sniffer on a MeshCore regional preset. If `region` is None,
+        falls back to DEFAULT_MESHCORE_REGION (EU/UK Narrow)."""
+        freq, sf, cr, bw, label = get_meshcore_preset(region)
         self.start_sniffer(
             freq, sf, cr, bw, label,
             sync_word=MESHCORE_SYNC_WORD,
