@@ -433,7 +433,7 @@ def main():
 
     args = sys.argv[1:]
     for arg in args:
-        if arg.startswith("/dev/") or arg.startswith("COM"):
+        if arg.startswith("/dev/") or arg.startswith("COM") or arg.startswith("/tmp/"):
             serial_port = arg
         else:
             loot_path = arg
