@@ -633,10 +633,17 @@ class WardriveUpload(PluginBase):
                     imp = result.get("imported", 0)
                     dup = result.get("duplicates", 0)
                     ac_i = result.get("aircraft_imported", 0)
+                    # Server adds aircraft_already_seen alongside
+                    # aircraft_imported so we can show the user what
+                    # actually went through after the per-user dedup.
+                    ac_dup = result.get("aircraft_already_seen", 0)
                     mc_i = result.get("meshcore_imported", 0)
                     info = f"+{imp} nets"
-                    if ac_i:
-                        info += f", +{ac_i} ac"
+                    if ac_i or ac_dup:
+                        ac_part = f", +{ac_i} ac"
+                        if ac_dup:
+                            ac_part += f" ({ac_dup} seen)"
+                        info += ac_part
                     if mc_i:
                         info += f", +{mc_i} mesh"
                     if dup:

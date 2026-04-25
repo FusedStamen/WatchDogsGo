@@ -8,6 +8,47 @@ minor versions.
 
 ---
 
+## [0.9.8] — 2026-04-26
+
+Surface the new `aircraft_already_seen` field that wdgwars.pl now
+returns alongside `aircraft_imported`. Companion to 0.9.6 — the server
+side of the same bug is fixed too: per-user `(user_id, icao)` dedup in
+the `user_aircraft_seen` table with `INSERT IGNORE`, so a re-uploaded
+session correctly credits aircraft that are new for that user.
+
+### Server-side fix (wdgwars.pl, by the portal admin)
+
+> Added `user_aircraft_seen` table (PRIMARY KEY user_id, icao) keyed
+> per-user, INSERT IGNORE on each ICAO during upload — `aircraft_imported`
+> now counts what's actually new for that user. Global
+> `maps_trackedaircraft` stays as the latest-position directory.
+> Plane Spotter / Plane Hunter / Sky Watcher badge counters all
+> switched to the new table; existing badge progress preserved via
+> best-effort backfill from prior `maps_trackedaircraft.uploaded_by_id`.
+
+### Client change
+
+- **`plugins/wardrive_upload.py`** reads the new `aircraft_already_seen`
+  key from the upload response. Successful upload log now shows
+  `+5 ac (3 seen)` instead of just `+5 ac`, so the user can see at a
+  glance how the dedup decided. No effect when the field is missing
+  (graceful default 0) — works against older server builds.
+
+### Reproducer
+
+Fresh user, blank slate:
+
+| step                                  | request ICAOs    | expected response                          |
+|---------------------------------------|------------------|--------------------------------------------|
+| 1. first upload                       | {A,B,C}          | `aircraft_imported: 3, aircraft_already_seen: 0` |
+| 2. same user, re-upload (active session)| {A,B,C,D,E,F,G,H}| `aircraft_imported: 5, aircraft_already_seen: 3` |
+
+Combined with 0.9.6 (active session never marked uploaded), the
+overnight ADS-B bug originally reported by the US user is fully
+addressed end-to-end.
+
+---
+
 ## [0.9.7] — 2026-04-26
 
 Accept any character device as a "serial port" so community PTY bridges
@@ -649,6 +690,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.8]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.4...v0.9.5
