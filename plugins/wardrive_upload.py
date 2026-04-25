@@ -402,7 +402,8 @@ class WardriveUpload(PluginBase):
             # Session has data if any of these exist
             has_data = any((d / f).is_file() for f in
                           ["wardriving.csv", "adsb_aircraft.csv", "meshcore_nodes.csv"])
-            if has_data and d.name not in self._uploaded_sessions:
+            active = Path(self.app.loot.session_path).name if self.app.loot else ""
+            if has_data and d.name not in self._uploaded_sessions and d.name != active:
                 pending.append(d)
         return pending
 
