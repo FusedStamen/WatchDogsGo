@@ -8,6 +8,48 @@ minor versions.
 
 ---
 
+## [0.9.7] — 2026-04-26
+
+Accept any character device as a "serial port" so community PTY bridges
+work without patching the entry point.
+
+### Background
+
+GitHub issue [#1](https://github.com/LOCOSP/WatchDogsGo/issues/1)
+(FusedStamen) — uConsole AIO v1 owners cannot get a real ESP32 + AIO v2
+on the same hardware, so the community wrote `wdg_wifi_bridge.py` which
+emulates the projectZero serial protocol on a PTY (`socat … PTY,link=/tmp/esp32-pty`)
+backed by the uConsole's built-in MT7921 (Wi-Fi) and BCM4345 (BLE)
+through `iw scan` and `bleak`. Game arguments only accepted `/dev/*`
+and `COM*` though, so `/tmp/esp32-pty` was getting parsed as a
+**loot path** instead and the game then started its normal ESP32
+auto-detect (which finds nothing).
+
+### Fixed
+
+- **`watchdogs/__main__.py`** — argument detection moved into
+  `_looks_like_serial(path)` which keeps the old `/dev/*` and `COM*`
+  prefixes and additionally accepts any path that `os.stat()` reports
+  as a character device. PTYs created by `socat link=…` follow that
+  test, so `sudo ./run.sh /tmp/esp32-pty` now opens the bridge.
+
+### Compatibility / safety review
+
+- Argv is supplied by whoever launches the game (typically
+  `sudo ./run.sh`) — no new attack surface; the same user already
+  controlled `/dev/ttyUSB0` and any other path passed in.
+- All previously-handled argv shapes keep their existing behaviour:
+  - `/dev/ttyUSB0`, `COM3` → serial (unchanged)
+  - regular files (`/etc/hosts`), directories (`/tmp`), non-existent
+    paths, relative paths → loot path (unchanged)
+  - `/dev/null` → still serial because it lives under `/dev/` (was
+    already serial under the prefix rule)
+- New behaviour:
+  - existing character device outside `/dev/` (e.g. `/tmp/esp32-pty`
+    symlink to `/dev/pts/N`) → serial (was loot path → broken).
+
+---
+
 ## [0.9.6] — 2026-04-24
 
 Hotfix for a data-loss bug in `plugins/wardrive_upload.py` reported by
@@ -607,6 +649,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.7]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.3...v0.9.4
