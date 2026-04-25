@@ -5541,7 +5541,7 @@ class WatchDogsGame:
             lines = self._flipper.storage_list("/ext/nfc")
             files = []
             for l in lines:
-                if l.startswith("[F]") and ".nfc" in l:
+                if "[F]" in l and ".nfc" in l:
                     fname = l.split("]")[-1].strip().split(" ")[0]
                     path = f"/ext/nfc/{fname}"
                     display = fname.replace(".nfc", "")
@@ -5579,7 +5579,7 @@ class WatchDogsGame:
                 name = l.split("/ext/subghz/")[-1]
                 if "/" not in name and name not in ("assets", "playlist", "remote"):
                     folders.add(name)
-            elif l.startswith("[F] /ext/subghz/") and ".sub" in l:
+            elif "[F]" in l and "/ext/subghz/" in l and ".sub" in l:
                 path = l.split(" ")[1] if " " in l else l[4:]
                 path = path.split(" ")[0]  # remove size
                 fname = path.split("/")[-1]
@@ -5610,7 +5610,7 @@ class WatchDogsGame:
         lines = self._flipper.storage_list(f"/ext/subghz/{folder}")
         files = []
         for l in lines:
-            if l.startswith("[F]") and ".sub" in l:
+            if "[F]" in l and ".sub" in l:
                 fname = l.split("]")[-1].strip().split(" ")[0]
                 path = f"/ext/subghz/{folder}/{fname}"
                 files.append((path, fname))
