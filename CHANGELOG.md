@@ -8,6 +8,52 @@ minor versions.
 
 ---
 
+## [0.9.6] — 2026-04-24
+
+Hotfix for a data-loss bug in `plugins/wardrive_upload.py` reported by
+a US user running ADS-B overnight:
+
+> If you stop wardriving during a session with active ADS-B, it's
+> marked as ready for upload. When a session is uploaded while still
+> active, any data written to it after the upload is lost because the
+> session gets marked as uploaded and never re-queued even though it
+> continued accumulating data overnight. […] 578 unique new ICAOs
+> seen after my upload — these are aircraft the server should have
+> counted as new but apparently didn't.
+
+The user's diagnosis was correct on the client side: as soon as
+`_upload_worker` got an HTTP 200 it added the session directory name
+to `_uploaded_sessions` and persisted that to
+`plugins/.wardrive_state.json`. The currently-recording session — the
+one ADS-B / GPS / MeshCore are still appending to — got the same
+treatment, so any rows written after the upload (overnight aircraft,
+late mesh adverts) silently fell out of the pending queue.
+
+### Fixed
+
+- **Active session is never marked as uploaded**. New helpers
+  `_active_session_name()` and `_mark_uploaded(session_dir)` in
+  `plugins/wardrive_upload.py` gate every place we used to call
+  `_uploaded_sessions.add(name)`. The active session keeps appearing
+  in `_pending_sessions()` until the game starts a fresh session
+  directory — at which point the now-stale session can finally be
+  marked done on the next upload.
+- The upload log explicitly tells the user when this happened:
+  `(active session — kept open for re-upload)` after a successful
+  upload, or `active, will re-check next upload` for a session that
+  was empty at upload time but might still receive data.
+
+### Not fixed (server-side)
+
+The user also flagged a second issue: after manually clearing the
+session from `_uploaded_sessions` and re-uploading, the server only
+credited the new MeshCore nodes and ignored 578 aircraft ICAOs that
+were genuinely first-seen that day. That dedup decision happens
+entirely on the wdgwars.pl side — there is nothing the game can do
+about it. Forwarded to the wdgwars admin separately.
+
+---
+
 ## [0.9.5] — 2026-04-24
 
 Runtime-selectable regional presets for the MeshCore radio. MeshCore
@@ -561,6 +607,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.6]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.2...v0.9.3

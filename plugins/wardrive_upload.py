@@ -406,6 +406,31 @@ class WardriveUpload(PluginBase):
                 pending.append(d)
         return pending
 
+    def _active_session_name(self) -> str:
+        """Directory name of the currently-recording loot session, or ''
+        if loot is not initialised. The active session keeps accumulating
+        data while the game runs (ADS-B sniffer, GPS, MeshCore), so we
+        never permanently mark it as uploaded — otherwise rows appended
+        after an upload silently disappear because the session is not
+        re-queued. Reported by a US user who ran ADS-B overnight: 578
+        new aircraft ICAOs were captured but never offered for upload
+        because the session got flagged 'uploaded' earlier in the day."""
+        try:
+            return Path(self.app.loot.session_path).name
+        except Exception:
+            return ""
+
+    def _mark_uploaded(self, session_dir: Path) -> bool:
+        """Mark a session as fully uploaded so it stops appearing in the
+        pending queue. Returns True if marked, False if skipped because
+        the session is still active (will be re-queued on next upload).
+        Always persists state when something changed."""
+        if session_dir.name == self._active_session_name():
+            return False
+        self._uploaded_sessions.add(session_dir.name)
+        self._save_state()
+        return True
+
     def _parse_csv(self, csv_path: Path) -> list[dict]:
         """Parse WiGLE CSV to list of network dicts."""
         if not csv_path.is_file():
@@ -575,8 +600,13 @@ class WardriveUpload(PluginBase):
             mc_nodes = self._parse_meshcore(session_dir / "meshcore_nodes.csv")
 
             if not networks and not aircraft and not mc_nodes:
-                self._log_add(f"[{i+1}/{total}] {session_dir.name}: no GPS data", 13)
-                self._uploaded_sessions.add(session_dir.name)
+                if self._mark_uploaded(session_dir):
+                    self._log_add(
+                        f"[{i+1}/{total}] {session_dir.name}: no GPS data", 13)
+                else:
+                    self._log_add(
+                        f"[{i+1}/{total}] {session_dir.name}: "
+                        "active, will re-check next upload", 13)
                 continue
 
             parts = []
@@ -615,8 +645,12 @@ class WardriveUpload(PluginBase):
                     self._handle_upload_badges(result)
                     total_nets += imp
                     uploaded += 1
-                    self._uploaded_sessions.add(session_dir.name)
-                    self._save_state()
+                    if not self._mark_uploaded(session_dir):
+                        # Active session — keep it in the pending queue so
+                        # data appended after this upload still gets sent.
+                        self._log_add(
+                            "  (active session — kept open for re-upload)",
+                            13)
             except HTTPError as e:
                 body = e.read().decode("utf-8", errors="replace")[:60]
                 if e.code == 429:
@@ -638,8 +672,10 @@ class WardriveUpload(PluginBase):
                             self._handle_upload_badges(result)
                             total_nets += imp
                             uploaded += 1
-                            self._uploaded_sessions.add(session_dir.name)
-                            self._save_state()
+                            if not self._mark_uploaded(session_dir):
+                                self._log_add(
+                                    "  (active session — kept open "
+                                    "for re-upload)", 13)
                     except Exception as e2:
                         self._log_add(f"  Retry failed: {e2}", 8)
                 else:
