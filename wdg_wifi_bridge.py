@@ -9,6 +9,24 @@ Usage:
 
 Then launch game with:
     sudo ./run.sh /tmp/esp32-pty
+
+Changes from original (FusedStamen fork):
+  - BLE fast-fail detection: times each scan and logs a warning if it completes
+    in under 2 seconds with 0 results, indicating the Bluetooth adapter has dropped
+  - Packet sniffer: start_sniffer/stop_sniffer commands put wlan2 (AWUS036ACM)
+    in monitor mode and capture raw 802.11 frames to pcapng via tcpdump,
+    saved to the loot session directory
+  - Handshake capture: start_handshake/start_handshake_serial commands use
+    airodump-ng on wlan2 for WPA handshake and PMKID capture; polls with
+    hcxpcapngtool every 10 seconds to detect new hashes and fires the game's
+    handshake event (SSID:/AP: format) triggering 200 XP + badge + map marker
+  - wlan1 restore: after stopping handshake capture, wlan1 is brought back up
+    since airodump-ng can bring it down during capture
+  - --sniffer-iface: new argument for dedicated capture interface (default wlan2),
+    separate from the wardriving interface (wlan1)
+  - --loot-dir: new argument to specify where packet captures are saved
+
+Dependencies: bleak, airodump-ng, hcxpcapngtool, tcpdump, iw
 """
 
 import argparse
@@ -310,8 +328,17 @@ class WifiBridge:
 
     def _do_ble_scan(self):
         log.info("BLE scanning on %s...", self.bt_iface)
+        t_start = time.time()
         devices = scan_ble(self.bt_iface, duration=8.0)
-        log.info("Found %d BLE devices", len(devices))
+        elapsed = time.time() - t_start
+        # Fast-fail detection: if scan completed in under 2s with 0 results
+        # the adapter has likely dropped out
+        if elapsed < 2.0 and len(devices) == 0:
+            log.warning("BLE scan completed in %.1fs with 0 results — adapter may have dropped (hci=%s)",
+                        elapsed, self.bt_iface)
+            self._write(f"BLE adapter warning: scan returned in {elapsed:.1f}s with 0 devices\r\n")
+        else:
+            log.info("Found %d BLE devices in %.1fs", len(devices), elapsed)
         for i, device in enumerate(devices):
             self._write(format_ble_line(i + 1, device))
             time.sleep(0.01)
