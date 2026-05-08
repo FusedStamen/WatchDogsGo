@@ -8,6 +8,104 @@ minor versions.
 
 ---
 
+## [0.9.10] — 2026-05-02
+
+Re-enabled offline map tile downloads, this time backed by Stadia Maps
+instead of the previously-disabled CartoDB Dark Matter source.
+Cherry-picked from FusedStamen's PR #5 (`1719bbf`); each player decides
+individually whether to opt in by adding their own free API key.
+
+### Added
+
+- **`watchdogs/tile_manager.py`** — `_load_stadia_key()` reads
+  `STADIA_API_KEY` from `secrets.conf`, `_tile_url()` builds the
+  Alidade Smooth Dark tile URL with the key appended. User-Agent
+  string updated.
+- **`watchdogs/app.py`** — removed the WIP/disabled gate from the
+  `_dl_map` handler. `SYSTEM > Download Map` now actually downloads;
+  pressing `[m]` again cancels in-flight. Menu label dropped its
+  `(WIP)` suffix.
+- **`secrets.conf.example`** — documents `STADIA_API_KEY=…`. Without
+  it the Download Map entry tells the player to add one (free account
+  at stadiamaps.com, no bulk-download restrictions on the personal
+  tier).
+
+### Verified
+
+- 44 tiles downloaded over Watertown MA on the contributor's uConsole
+  CM4, zero errors, tiles render under the existing radar/markers
+  overlay (per PR #5 description).
+
+---
+
+## [0.9.9] — 2026-05-02
+
+Two community contributions cherry-picked from FusedStamen's fork —
+the rest of his branch (handshake architecture change, AWUS packet
+sniffer, bridge scripts, whitelist.json) has been left out and will
+need separate review.
+
+### Added — Aircraft total on the loot screen
+*(commit `d283e66` from FusedStamen, PR #4 target)*
+
+- **`watchdogs/loot_manager.py`** — new
+  `save_adsb_aircraft(icao, callsign, lat, lon, alt_ft, speed_kt, heading)`
+  appends to `<session>/adsb_aircraft.csv` with header on first write,
+  dedup-by-ICAO within a session, fsync'd. Same pattern as the
+  existing `bt_devices` / `wardriving` writers.
+- **`_scan_session_dir`** counts `adsb_aircraft.csv` rows and
+  `_recalc_totals` / `_rebuild_db` carry the new `adsb` key so it
+  rolls up into all-time totals.
+- **`watchdogs/app.py`** — the `aircraft_new` event handler now also
+  calls `loot.save_adsb_aircraft(...)` for each unique ICAO seen,
+  capturing position/altitude/speed/heading.
+- **Loot screen** gains an "Aircraft" row in both the ALL-TIME column
+  (prefers server-side `_user_stats["aircraft"]` from the wardrive
+  plugin so the number matches what wdgwars.pl reports, falls back to
+  the local count) and the THIS SESSION column (live SDR aircraft
+  count).
+
+The CSV format `save_adsb_aircraft` writes is exactly what
+`plugins/wardrive_upload.py:_parse_adsb` already expects, so existing
+sessions get picked up automatically by the next upload.
+
+### Fixed — Upload timeout false-failure
+*(commit `4e5ec75` from FusedStamen, PR #6 target)*
+
+- **`plugins/wardrive_upload.py`** — bumped per-request timeout from
+  30 s to 90 s on both the main upload and the rate-limit retry. Large
+  ADS-B sessions could exceed 30 s server-side processing, so the
+  client got a `TimeoutError` on a request the server actually
+  accepted, then retried and the dedup layer correctly rejected the
+  duplicate — net effect was no progress.
+- **New `(TimeoutError, OSError)` handler** marks the session as
+  uploaded after a warning, instead of silently leaving it pending.
+  Safe in combination with 0.9.6's chokepoint (active session is
+  still skipped by `_mark_uploaded`) and 0.9.8's per-user
+  `aircraft_already_seen` dedup (any future re-upload only credits
+  genuinely new ICAOs).
+
+### Not merged from the same fork
+
+The submitted PRs (#4, #5, #6) all carried 8–10 commits from
+FusedStamen's `main` branch beyond the target commit:
+
+- `feat: switch HS capture to airodump-ng …` — would replace ESP32
+  handshake capture with a host-side `airodump-ng` flow. Architecture
+  change, separate decision.
+- `feat: packet sniffer via AWUS036ACM wlan2, tcpdump monitor mode` —
+  new feature, needs its own design + UI review.
+- `Add XIAO auto-detect launcher, whitelist, and packet sniff bridge`
+  — bundled `whitelist.json` (a private MAC ignore list, not
+  appropriate for a shared repo) and an unsanitised bridge script.
+- `feat: AIO v1 uConsole Config …` — modifies code paths shared with
+  AIO v2 hardware; needs explicit AIO v1 vs v2 branching.
+- `fix: skip active session in _pending_sessions …` — duplicates the
+  fix already shipped as 0.9.6 (different code site, same intent).
+PRs #4, #5 and #6 closed with cherry-pick reference.
+
+---
+
 ## [0.9.8] — 2026-04-26
 
 Surface the new `aircraft_already_seen` field that wdgwars.pl now
@@ -690,6 +788,8 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.10]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.9...v0.9.10
+[0.9.9]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.7...v0.9.8
 [0.9.7]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.6...v0.9.7
 [0.9.6]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.5...v0.9.6

@@ -180,7 +180,7 @@ MENU_CATS = [
     ("SYSTEM", [
         ("x", "STOP ALL",        "stop",                   "_stop_all",    None),
         ("r", "Reboot ESP32",    "_reboot_esp32",          "_reboot",      None),
-        ("m", "Download Map (WIP)", "_download_map",       "_dl_map",      None),
+        ("m", "Download Map",       "_download_map",       "_dl_map",      None),
         ("g", "GPS",             "_toggle_gps",            "_gps_toggle",  None),
         ("l", "LoRa",            "_toggle_lora",           "_lora_toggle", None),
         ("d", "SDR",             "_toggle_sdr",            "_sdr_toggle",  None),
@@ -1655,9 +1655,11 @@ class WatchDogsGame:
             self.msg("[SYS] Reboot command sent", C_DIM)
             return
         if state_key == "_dl_map":
-            # Temporarily disabled — needs rework (tile source, quota, resume)
-            self.msg("[MAP] Download disabled — work in progress", C_WARNING)
-            self.msg("[MAP] Feature will return in a future update", C_DIM)
+            if self._map_downloading:
+                self._map_download_cancel = True
+                self.msg("[MAP] Cancelling download...", C_WARNING)
+            else:
+                self._start_map_download()
             return
         if state_key == "_bt_hid_wip":
             self.msg("[HID] BLE HID disabled — work in progress", C_WARNING)

@@ -614,6 +614,28 @@ sudo apt-get install --reinstall ca-certificates
 the key from your profile page on the portal exactly (64 hex chars,
 no quotes, no spaces).
 
+## Community contributions
+
+The game is built around a real ESP32-C5 + AIO v2 setup, but the
+community has worked out alternative paths for hardware that doesn't
+match exactly. These live as opt-in tools maintained by their authors
+— not bundled in this repo, not part of our `setup.sh`, no
+maintenance commitment from us. Use at your own risk.
+
+- **ESP32-less wardriving on uConsole AIO v1** —
+  [`wdg_wifi_bridge.py`](https://github.com/LOCOSP/WatchDogsGo/issues/3)
+  by [@FusedStamen](https://github.com/FusedStamen). Emulates the
+  projectZero serial protocol over a PTY (`/tmp/esp32-pty`) using the
+  host's own WiFi (via `iw`) and Bluetooth (via `bleak`) adapters; the
+  game opens it like a normal ESP32 thanks to the char-device argv
+  detection added in 0.9.7. Optional extras for handshake capture
+  (`airodump-ng` + `hcxpcapngtool`) and packet sniffing (`tcpdump`)
+  are documented in the issue. Full source in the
+  [author's fork](https://github.com/FusedStamen/WatchDogsGo).
+
+If you have a similar setup or contribution worth sharing, open an
+issue with `[community]` in the title and we'll link it here.
+
 ## Contributing
 
 Pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
