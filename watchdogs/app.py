@@ -2213,6 +2213,17 @@ class WatchDogsGame:
 
     def _start_map_download(self):
         """Download OSM tiles around current GPS position (or manual pos)."""
+        # Preflight: Stadia returns HTTP 401 for every request without an
+        # API key, so without this guard the user just sees hundreds of
+        # `HTTP 401 Unauthorized` lines in the terminal and no map. Bail
+        # early with a clear pointer to the secrets.conf line + signup URL.
+        from .tile_manager import _load_stadia_key
+        if not _load_stadia_key():
+            self.msg("[MAP] No Stadia API key — add STADIA_API_KEY to secrets.conf",
+                     C_WARNING)
+            self._term_add(
+                "[MAP] Free signup: https://stadiamaps.com", raw=True)
+            return
         if not self.gps_fix:
             self.msg("[MAP] No GPS fix — using current view center", C_WARNING)
         lat = self.player_lat

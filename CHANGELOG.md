@@ -8,6 +8,37 @@ minor versions.
 
 ---
 
+## [0.9.11] — 2026-05-08
+
+Quality-of-life follow-up to 0.9.10. The Stadia Maps tile endpoint
+returns `HTTP 401 Unauthorized` for every request that doesn't carry
+a key, so a user who runs `SYSTEM > Download Map` without first
+adding `STADIA_API_KEY=…` to `secrets.conf` saw hundreds of
+`[MAP] 0% — ERR tile … HTTP Error 401: Unauthorized` lines in the
+terminal and no map — confusing first-run experience.
+
+### Changed
+
+- **`watchdogs/app.py`** — `_start_map_download()` now preflights
+  `_load_stadia_key()` from `tile_manager`. If the key is empty the
+  download bails early with two clear messages instead of starting
+  the doomed worker thread:
+    ```
+    [MAP] No Stadia API key — add STADIA_API_KEY to secrets.conf
+    [MAP] Free signup: https://stadiamaps.com
+    ```
+- **`watchdogs/tile_manager.py`** — docstring on `download_tiles()`
+  and the throttle-sleep comment still referenced *"CartoDB Dark
+  Matter"* / *"CartoDB usage policy"* (leftover from before
+  FusedStamen's PR #5 swapped the source). Now reads "Stadia Maps
+  Alidade Smooth Dark" / "polite to Stadia free tier" so a future
+  reader doesn't think there's a second tile provider in the code.
+
+No functional changes for users who already have a key configured —
+their download path is unchanged.
+
+---
+
 ## [0.9.10] — 2026-05-02
 
 Re-enabled offline map tile downloads, this time backed by Stadia Maps
@@ -788,6 +819,7 @@ The major pre-release milestones were:
 - **Bruce Firmware integration** — pull request to upstream
   `BruceDevices/firmware` adding native upload to wdgwars.pl
 
+[0.9.11]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.10...v0.9.11
 [0.9.10]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.9...v0.9.10
 [0.9.9]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/LOCOSP/WatchDogsGo/compare/v0.9.7...v0.9.8

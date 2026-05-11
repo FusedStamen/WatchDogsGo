@@ -224,7 +224,7 @@ def _convert_tile_pil(png_bytes: bytes) -> bytes:
 def download_tiles(lat: float, lon: float, maps_dir: Path,
                    radius_km: float = 100.0,
                    callback=None) -> dict:
-    """Download CartoDB Dark Matter tiles for area around lat/lon.
+    """Download Stadia Maps Alidade Smooth Dark tiles around lat/lon.
 
     Uses tiered radii per zoom level to keep download size reasonable.
     @2x (retina) tiles are downloaded for better label quality.
@@ -285,7 +285,7 @@ def download_tiles(lat: float, lon: float, maps_dir: Path,
         if callback and done % 20 == 0:
             callback(done / total * 100, f"{done}/{total} tiles")
 
-        # Throttle: 50ms between requests (CartoDB usage policy)
+        # Throttle: 50ms between requests (polite to Stadia free tier)
         time.sleep(0.05)
 
     manifest = {
