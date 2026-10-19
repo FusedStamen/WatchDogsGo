@@ -351,6 +351,12 @@ class WatchDogsGame:
             pass
         pyxel.mouse(False)
 
+        # Terminal lock — initialized first so threads can log during boot
+        self.terminal_lines: list[str] = []
+        self._terminal_colors: list[int] = []
+        self.term_scroll = 0
+        self._term_lock = threading.Lock()
+
         # Load hacker character sprite into image bank 1
         self._hacker_sprite_ok = False
         self._hacker_w = 0
@@ -781,11 +787,7 @@ class WatchDogsGame:
         # Quit confirm dialog
         self.confirm_quit = False
 
-        # Terminal
-        self.terminal_lines: list[str] = []
-        self._terminal_colors: list[int] = []
-        self.term_scroll = 0
-        self._term_lock = threading.Lock()
+        # Terminal (initialized earlier in __init__ for thread safety)
 
         # Loot GPS points (loaded from all loot sessions)
         self.loot_points: list[dict] = []
@@ -4831,7 +4833,7 @@ class WatchDogsGame:
         if self.state.portal_running: tools.append("EP")
         if self.state.evil_twin_running: tools.append("ET")
         if self._sdr.running and "adsb" in self._sdr.mode:
-            n_pos = sum(1 for a in self._sdr.aircraft.values() if a.has_position)
+            n_pos = sum(1 for a in list(self._sdr.aircraft.values()) if a.has_position)
             n_all = len(self._sdr.aircraft)
             tools.append(f"ADS-B:{n_pos}/{n_all}")
         if self._sdr.running and "433" in self._sdr.mode:
@@ -4976,7 +4978,7 @@ class WatchDogsGame:
             # Counter label
             parts = []
             if "adsb" in self._sdr.mode:
-                n_pos = sum(1 for a in self._sdr.aircraft.values() if a.has_position)
+                n_pos = sum(1 for a in list(self._sdr.aircraft.values()) if a.has_position)
                 parts.append(f"AC:{n_pos}/{len(self._sdr.aircraft)}")
             if "433" in self._sdr.mode:
                 parts.append(f"S:{self._sdr.total_sensors_seen}")

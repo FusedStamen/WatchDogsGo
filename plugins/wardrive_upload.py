@@ -1001,8 +1001,11 @@ class WardriveUpload(PluginBase):
         self._log.append((text, color))
         if len(self._log) > 100:
             self._log = self._log[-100:]
-        if self.app:
-            self.app._term_add(f"[Sync] {text}", raw=True)
+        if self.app and hasattr(self.app, '_term_lock'):
+            try:
+                self.app._term_add(f"[Sync] {text}", raw=True)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Auth push — game as authenticator
