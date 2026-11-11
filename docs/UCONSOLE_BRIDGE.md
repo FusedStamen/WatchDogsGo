@@ -84,6 +84,35 @@ Make sure `--bt-iface` matches the right controller. `hci0` and `hci1` can swap 
 
 Only one bridge can own the adapter and the PTY. Stop any manual run (Ctrl+C) before using the service, and check with `systemctl status wdg-wifi-bridge`.
 
+## GPS ("Gps not found" in the game)
+
+The game does not need gpsd. At startup (`watchdogs/gps_manager.py`) it picks a GPS port in this order:
+
+1. If the environment variable `WDG_GPS_DEVICE` is set, it uses that port directly and does no probing.
+2. Otherwise it checks `/tmp/gps-pty` (a gpsd bridge, only present if you set one up) for NMEA data.
+3. Otherwise it scans `/dev/ttyUSB*`, `/dev/ttyACM*` and `/dev/ttyAMA*` at 9600 baud and uses the first one that outputs NMEA (`$GP...` or `$GN...`).
+
+The scan does **not** include `/dev/ttyS0`. On some boards the built-in GPS (for example the AIO board's) shows up as `/dev/ttyS0`, so the game says "Gps not found" even though the GPS works fine.
+
+**Check where your GPS is:**
+
+```
+ls -l /dev/ttyAMA* /dev/ttyS0 /dev/ttyACM* /dev/ttyUSB* /dev/serial0 2>/dev/null
+sudo timeout 5 cat /dev/ttyS0
+```
+
+Swap in each port from the first command for `/dev/ttyS0`. The port that prints lines starting with `$GNGGA` or `$GPGGA` is your GPS. In the `GGA` line, the number after the longitude's `E` or `W` is the fix quality (0 means no fix, 1 or higher means a fix). Stop any such `cat` with Ctrl+C before starting the game, because two readers on one port steal data from each other.
+
+**If it is on `ttyS0` (or any port the scan skips), tell the game directly:**
+
+```
+bash run-with-gps.sh /dev/ttyS0
+```
+
+`run-with-gps.sh` just sets `WDG_GPS_DEVICE` (and `WDG_GPS_BAUD`, default 9600) and starts `run.sh`. If the position is garbage, try another baud: `bash run-with-gps.sh /dev/ttyS0 115200`.
+
+If your GPS is on a `ttyAMA*`, `ttyACM*` or `ttyUSB*` port, the game should find it by itself and no setup is needed.
+
 ## Notes
 
 - The bridge needs root.
